@@ -1,8 +1,13 @@
 # Task Island
 
-A compact, native macOS status bar for Codex and Claude Code tasks. Keep an eye on work while using other apps, then review finished results in one small queue.
+A compact, native macOS status bar for **Codex** and **Claude Code** tasks. Keep an eye on work while using other apps, then review finished results in one small queue.
 
-<img src="docs/assets/review.png" alt="Synthetic Task Island review queue" width="440">
+> [!IMPORTANT]
+> **Codex and Claude Code only, not chat.** Task Island follows coding tasks in the Codex desktop app and in Claude Code. It does not follow Claude chat conversations (claude.ai or the Claude app's Chat tab), Cowork, or ChatGPT chats, and there are no plans to add them.
+
+<img src="docs/assets/demo.gif" alt="Animated demo with built-in sample tasks: hovering opens the panel and switches between Running, Input, and Review; dragging it into the menu bar docks it beside the notch, where the ears are the tabs" width="600">
+
+<sub>Demo built from the app's synthetic previews (sample tasks, no real data) by <code>docs/make-demo.py</code>.</sub>
 
 Task Island is an independent, experimental project. It uses local app data and private desktop protocols, so coverage can change when Codex or Claude updates.
 
@@ -26,7 +31,7 @@ Task Island is an independent, experimental project. It uses local app data and 
 | Claude Code desktop records | Local runtime registry when present; persisted successful-turn and error identities independent of runtime | Remote/SSH tasks may have completion records without locally observable running/input state. Real-session coverage depends on the desktop version. |
 | Claude Remote Control list cache | Timestamped running/input/idle observations; inferred endings when an explicitly active observation is followed by a newer idle observation | Not a continuous live feed. Inferred endings are labeled separately and do not claim a successful upstream turn. |
 
-Ordinary Claude chat and Cowork are not supported. The app does not install hooks or configure remote hosts. A task existing only in a stale remote list cannot be made live by refreshing Task Island's own heartbeat.
+Claude chat, Cowork, and ChatGPT chat are not supported; only Codex and Claude Code tasks are. The app does not install hooks or configure remote hosts. A task existing only in a stale remote list cannot be made live by refreshing Task Island's own heartbeat.
 
 ## Requirements
 
@@ -93,6 +98,8 @@ Synthetic offscreen previews do not start source observers or play sounds:
 ```sh
 "task-island/Task Island.app/Contents/MacOS/TaskIsland" --render-preview /tmp/task-island-review.png --floating
 ```
+
+`python3 docs/make-demo.py` rebuilds `docs/assets/demo.gif` from these previews (requires Pillow).
 
 ## Privacy and local state
 
