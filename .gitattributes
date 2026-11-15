@@ -1,0 +1,2 @@
+# Preserve verbatim upstream license text, including its original whitespace.
+third-party/*-LICENSE -whitespace

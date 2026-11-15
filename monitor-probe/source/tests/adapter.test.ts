@@ -1,0 +1,272 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { createServer, type Socket } from 'node:net';
+import { readCatalog } from '../src/providers/codex/catalog';
+import { CodexProvider } from '../src/providers/codex';
+import { FrameDecoder, encodeFrame } from '../src/providers/codex/transport';
+import type { Session } from '../src/shared/types';
+
+function catalog(home: string) {
+  const db = new DatabaseSync(join(home, 'state_5.sqlite'));
+  db.exec(`CREATE TABLE threads(id TEXT PRIMARY KEY,title TEXT,cwd TEXT,source TEXT,archived INTEGER,updated_at INTEGER);
+    INSERT INTO threads VALUES('aaaaaa','Build feature','/work/project','cli',0,10),('bbbbbb','Helper','/work/project','subagent',0,11);`);
+  db.close();
+}
+test('catalog only reads source metadata and does not infer runtime from recency', () => {
+  const home = mkdtempSync('/tmp/monitor-cat-');
+  try {
+    catalog(home);
+    const before = readFileSync(join(home, 'state_5.sqlite'));
+    const sessions = readCatalog(home);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].status, 'unknown');
+    assert.equal(sessions[0].attentionKey, null);
+    assert.equal(sessions[0].updatedAt, 10000);
+    assert.equal(sessions[0].sourcePinned, undefined);
+    assert.deepEqual(readFileSync(join(home, 'state_5.sqlite')), before);
+  } finally {
+    rmSync(home, { recursive: true });
+  }
+});
+test('catalog observes current Codex section pins and ignores stale pin stores', () => {
+  const home = mkdtempSync('/tmp/monitor-pins-');
+  try {
+    catalog(home);
+    const db = new DatabaseSync(join(home, 'state_5.sqlite'));
+    db.exec(`ALTER TABLE threads ADD COLUMN thread_section_id TEXT;
+      ALTER TABLE threads ADD COLUMN is_pinned INTEGER DEFAULT 1;
+      CREATE TABLE thread_sections(id TEXT PRIMARY KEY,name TEXT);
+      INSERT INTO thread_sections VALUES('custom-section','Pinned');
+      UPDATE threads SET thread_section_id='01984de2-8f74-7c91-a3b2-5c5e937cf318',is_pinned=0 WHERE id='aaaaaa';`);
+    const globalPath = join(home, '.codex-global-state.json');
+    writeFileSync(globalPath, JSON.stringify({ 'pinned-thread-ids': ['aaaaaa'] }));
+    const before = readFileSync(join(home, 'state_5.sqlite'));
+    assert.equal(readCatalog(home)[0].sourcePinned, true);
+    assert.deepEqual(readFileSync(join(home, 'state_5.sqlite')), before);
+    db.exec("UPDATE threads SET thread_section_id=NULL,is_pinned=1 WHERE id='aaaaaa'");
+    assert.equal(readCatalog(home)[0].sourcePinned, false, 'unpin ignores stale legacy pins');
+    db.exec("UPDATE threads SET thread_section_id='custom-section' WHERE id='aaaaaa'");
+    assert.equal(readCatalog(home)[0].sourcePinned, false, 'a custom Pinned section is not a pin');
+    db.exec(
+      "UPDATE threads SET thread_section_id='01984de2-8f74-7c91-a3b2-5c5e937cf318' WHERE id='aaaaaa'",
+    );
+    assert.equal(readCatalog(home)[0].sourcePinned, true, 're-pinning is observed on refresh');
+    assert.deepEqual(JSON.parse(readFileSync(globalPath, 'utf8')), {
+      'pinned-thread-ids': ['aaaaaa'],
+    });
+    db.close();
+  } finally {
+    rmSync(home, { recursive: true });
+  }
+});
+test('catalog discovery includes every nonarchived task beyond the old 200-task window', () => {
+  const home = mkdtempSync('/tmp/monitor-cat-');
+  try {
+    catalog(home);
+    const db = new DatabaseSync(join(home, 'state_5.sqlite'));
+    const insert = db.prepare("INSERT INTO threads VALUES(?,?,'/work/project','cli',0,?)");
+    for (let i = 0; i < 250; i++) insert.run(`task-${i}`, `Task ${i}`, i);
+    db.exec("INSERT INTO threads VALUES('archived','Archived','/work/project','cli',1,1000)");
+    db.close();
+    const sessions = readCatalog(home);
+    assert.equal(sessions.length, 251);
+    assert.ok(sessions.some((s) => s.externalId === 'task-0'));
+    assert.ok(!sessions.some((s) => s.externalId === 'archived'));
+    assert.equal(
+      readCatalog(home, ['archived']).find((s) => s.externalId === 'archived')?.archived,
+      true,
+    );
+  } finally {
+    rmSync(home, { recursive: true });
+  }
+});
+test('desktop observer follows, applies ordered patches, resyncs gaps and never claims ownership', async (t) => {
+  const home = mkdtempSync('/tmp/monitor-ipc-');
+  mkdirSync(join(home, 'ipc'), { mode: 0o700 });
+  catalog(home);
+  let client: Socket | undefined;
+  const outbound: any[] = [];
+  const server = createServer((socket) => {
+    client = socket;
+    const decoder = new FrameDecoder();
+    socket.on('data', (bytes) => {
+      for (const raw of decoder.push(bytes)) {
+        const message = raw as any;
+        outbound.push(message);
+        if (message.method === 'initialize')
+          socket.write(
+            encodeFrame({
+              type: 'response',
+              requestId: message.requestId,
+              resultType: 'success',
+              result: { clientId: 'observer' },
+            }),
+          );
+      }
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(join(home, 'ipc', 'ipc.sock'), resolve));
+  const provider = new CodexProvider(home, join(home, 'hooks'));
+  let sessions: Session[] = [];
+  t.after(async () => {
+    provider.stop();
+    client?.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(home, { recursive: true });
+  });
+  provider.track(['aaaaaa']);
+  await provider.start({
+    sessions: (value) => {
+      sessions = value;
+    },
+    health: () => {},
+  });
+  async function wait(predicate: () => boolean) {
+    for (let i = 0; i < 100; i++) {
+      if (predicate()) return;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.fail('Timed out waiting for observer');
+  }
+  const send = (value: unknown) => client!.write(encodeFrame(value));
+  const update = (change: object, version = 11) =>
+    send({
+      type: 'broadcast',
+      method: 'thread-stream-state-changed',
+      version,
+      sourceClientId: 'owner',
+      params: { hostId: 'local', conversationId: 'aaaaaa', change },
+    });
+  await wait(() => outbound.some((m) => m.method === 'thread-stream-following-changed'));
+  send({ type: 'client-discovery-request', requestId: 'discover' });
+  await wait(() => outbound.some((m) => m.type === 'client-discovery-response'));
+  assert.deepEqual(outbound.find((m) => m.type === 'client-discovery-response').response, {
+    canHandle: false,
+  });
+  update({
+    type: 'snapshot',
+    revision: 1,
+    conversationState: {
+      id: 'aaaaaa',
+      threadRuntimeStatus: { type: 'active' },
+      hasUnreadTurn: false,
+      turns: [{ turnId: 'turn1', status: 'inProgress', turnStartedAtMs: 1 }],
+    },
+  });
+  await wait(() => sessions[0]?.status === 'running');
+  const pinCatalog = new DatabaseSync(join(home, 'state_5.sqlite'));
+  pinCatalog.exec(`ALTER TABLE threads ADD COLUMN thread_section_id TEXT;
+    UPDATE threads SET thread_section_id='01984de2-8f74-7c91-a3b2-5c5e937cf318' WHERE id='aaaaaa';`);
+  await provider.refresh();
+  assert.equal(sessions[0].sourcePinned, true);
+  assert.equal(sessions[0].status, 'running', 'pin refresh preserves live runtime state');
+  pinCatalog.exec("UPDATE threads SET thread_section_id=NULL WHERE id='aaaaaa'");
+  pinCatalog.close();
+  await provider.refresh();
+  assert.equal(sessions[0].sourcePinned, false);
+  assert.equal(sessions[0].status, 'running');
+  mkdirSync(join(home, 'hooks'), { mode: 0o700 });
+  const hookFile = join(home, 'hooks', 'aaaaaa.json');
+  writeFileSync(
+    hookFile,
+    JSON.stringify({
+      version: 1,
+      sessionId: 'aaaaaa',
+      completion: {
+        event: 'TurnComplete',
+        turnId: 'turn-older',
+        at: Date.now(),
+      },
+      terminal: {
+        pid: 2000000000,
+        tty: '/dev/ttys004',
+        startedAt: 'Thu Oct 1 04:52:11 2026',
+        at: Date.now(),
+        ended: true,
+      },
+    }),
+    { mode: 0o600 },
+  );
+  await provider.refresh();
+  assert.equal(sessions[0].status, 'running'); // Current desktop state overrides hook history.
+  assert.equal(
+    sessions[0].terminalResumeAllowed,
+    false,
+    'a CLI task running in desktop cannot resume in iTerm',
+  );
+  rmSync(hookFile);
+  await provider.refresh();
+  update({
+    type: 'patches',
+    baseRevision: 1,
+    revision: 2,
+    patches: [
+      { op: 'replace', path: ['threadRuntimeStatus'], value: { type: 'idle' } },
+      { op: 'replace', path: ['hasUnreadTurn'], value: true },
+    ],
+  });
+  await wait(() => sessions[0]?.status === 'review');
+  assert.equal(sessions[0].attentionKey, 'result:turn1');
+  send({
+    type: 'broadcast',
+    method: 'thread-read-state-changed',
+    version: 3,
+    params: { hostId: 'local', threadId: 'aaaaaa', hasUnreadTurn: false },
+  });
+  await wait(() => sessions[0]?.status === 'read');
+  writeFileSync(
+    hookFile,
+    JSON.stringify({
+      version: 1,
+      sessionId: 'aaaaaa',
+      activity: {
+        event: 'PreToolUse',
+        turnId: 'newturn-1',
+        at: Date.now(),
+      },
+    }),
+    { mode: 0o600 },
+  );
+  await provider.refresh();
+  assert.equal(sessions[0].status, 'running'); // The desktop receipt belongs to an older turn.
+  update({
+    type: 'patches',
+    baseRevision: 2,
+    revision: 3,
+    patches: [
+      {
+        op: 'replace',
+        path: ['turns'],
+        value: [{ turnId: 'newturn-1', status: 'completed', turnStartedAtMs: Date.now() }],
+      },
+    ],
+  });
+  await wait(() => sessions[0]?.status === 'read'); // A receipt for the same turn wins.
+  rmSync(hookFile);
+  await provider.refresh();
+  update({ type: 'patches', baseRevision: 5, revision: 6, patches: [] });
+  await wait(() => sessions[0]?.status === 'unknown');
+  await wait(() =>
+    outbound.some((m) => m.method === 'thread-stream-following-changed' && !m.params.following),
+  );
+  update({
+    type: 'snapshot',
+    revision: 7,
+    conversationState: { id: 'aaaaaa', threadRuntimeStatus: { type: 'active' } },
+  });
+  await wait(() => sessions[0]?.status === 'running');
+  update({ type: 'patches', baseRevision: 7, revision: 8, patches: [] }, 99);
+  await wait(() => sessions[0]?.status === 'unknown');
+  assert.match(sessions[0].detail, /not supported/);
+  assert.ok(
+    outbound.every(
+      (m) =>
+        m.method === 'initialize' ||
+        m.method === 'thread-stream-following-changed' ||
+        m.type === 'client-discovery-response',
+    ),
+  );
+});
