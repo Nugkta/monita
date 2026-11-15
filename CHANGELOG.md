@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.15
+
+- A task that starts running again is no longer listed under both Running and
+  Review. While it is confirmed running, it is left out of Review (list and
+  counts); its results stay pending, unacknowledged, and it returns to Review
+  when it stops. A stale "last seen running" observation does not hide it.
+
 ## 0.2.14
 
 - Renamed from Task Island to **Monita**. The app is now `Monita.app` (menu:
