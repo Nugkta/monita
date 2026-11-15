@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.13
+
+- Drag the docked island off the camera housing to undock it; it becomes the
+  floating panel under the pointer. A short press is still a click.
+- Compact island ears fit their contents: 52 points for Running, 88 for Input
+  and Review. Open, the list stays centred under the housing.
+- Only a press in the ears can drag the island off, so a sloppy click in the
+  open list still reaches its row. After a drag, only moving onto a tab
+  switches it, and hover never switches tabs while an Open is in flight.
+
+## 0.2.12
+
+- Dragging the floating panel no longer opens or closes it, and its position is
+  kept by its top centre, so it stays lined up open and closed. Dropped within
+  24 points of the screen's centre line, it centres itself.
+- Docked layout is now an island beside the camera housing at menu-bar height,
+  replacing the bar that hung below it. Dock by pushing the panel into the menu
+  bar over the housing; undock from the status menu ("Movable Panel").
+- Removed the optional Claude chat probe and its cache inspection hook. Claude
+  chat remains out of scope.
+
+## 0.2.11
+
+- Hovering Running, Input, or Review for 0.1 seconds selects it. Only the
+  pointer's own movement counts, so tabs sliding under a still pointer while
+  the panel opens never switch it.
+
 ## 0.2.10
 
 - Spring-based expansion and collapse, with stable top-edge positioning,

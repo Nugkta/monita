@@ -139,6 +139,33 @@ private struct PanelMotionCases {
                 try require(needed <= available, "At reveal \(reveal) labels need \(needed) of \(available)")
             }
         }
-        print("PASS: 12 panel-motion scenarios; Foundation only; no window, display or user data.")
+        typealias P = DockedDrag.Point
+        try run("a click on the docked island passes through, wobble included") {
+            var drag = DockedDrag()
+            try require(drag.pressed(at: P(x: 700, y: 965), docked: true) == .pass, "Press passes")
+            try require(drag.dragged(to: P(x: 703, y: 961)) == .pass, "Under 6 points it is still a click")
+            try require(drag.released() == .pass && !drag.isDragging, "The click reaches the tab")
+        }
+        try run("a press that travels 6 points undocks it under the pointer, then it follows and drops") {
+            var drag = DockedDrag()
+            _ = drag.pressed(at: P(x: 700, y: 965), docked: true)
+            try require(drag.dragged(to: P(x: 700, y: 959)) == .undock(P(x: 700, y: 976)),
+                        "Undocks with the pointer in the middle of the floating bar")
+            try require(drag.dragged(to: P(x: 420, y: 600)) == .move(P(x: 420, y: 617)), "Then follows the pointer")
+            try require(drag.released() == .drop && !drag.isDragging, "Letting go applies the drop rule")
+            try require(drag.dragged(to: P(x: 0, y: 0)) == .pass, "Nothing follows after the drop")
+        }
+        try run("a floating panel's press never undocks; the window server moves it") {
+            var drag = DockedDrag()
+            _ = drag.pressed(at: P(x: 700, y: 900), docked: false)
+            try require(drag.dragged(to: P(x: 300, y: 300)) == .pass && drag.released() == .pass, "Floating drags pass through")
+        }
+        try run("cancel forgets a press") {
+            var drag = DockedDrag()
+            _ = drag.pressed(at: P(x: 700, y: 965), docked: true)
+            drag.cancel()
+            try require(drag.dragged(to: P(x: 300, y: 300)) == .pass, "A cancelled press does not undock")
+        }
+        print("PASS: 16 panel-motion scenarios; Foundation only; no window, display or user data.")
     }
 }

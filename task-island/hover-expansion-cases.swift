@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 private struct HoverFailure: Error, CustomStringConvertible {
@@ -313,6 +314,113 @@ struct HoverExpansionCases {
             controller = nil
             clock.forceFire(0)
             try require(isReleased() && changes.isEmpty, "Pending work must not keep the controller alive")
+        }
+
+        // Hover tab selection. Frames follow the real centred layout: a 216pt compact
+        // bar and a 440pt open bar, three equal tabs after 8pt padding and a 24pt chevron.
+        enum Tab { case running, input, review }
+        func bar(width: CGFloat) -> [Tab: CGRect] {
+            let tab = (width - 16 - 24) / 3, left = -width / 2 + 8
+            return [.running: CGRect(x: left, y: 0, width: tab, height: 34),
+                    .input: CGRect(x: left + tab, y: 0, width: tab, height: 34),
+                    .review: CGRect(x: left + 2 * tab, y: 0, width: tab, height: 34)]
+        }
+        let compact = bar(width: 216), open = bar(width: 440)
+        func selector(_ clock: ManualScheduler, _ picks: @escaping (Tab) -> Void) -> HoverTabSelector<Tab> {
+            HoverTabSelector<Tab>(onSelect: picks, schedule: clock.schedule)
+        }
+        try run("hovering a tab selects it after 100ms, before the panel's 120ms open") {
+            let clock = ManualScheduler(); var picks: [Tab] = []
+            let s = selector(clock) { picks.append($0) }
+            s.pointerMoved(to: CGPoint(x: -60, y: 17), tabs: compact)
+            try require(clock.jobs.count == 1 && clock.jobs[0].deadline == 0.100 && HoverTabSelector<Tab>.defaultDwell < 0.120,
+                        "Selection must use a 100ms dwell, shorter than the hover-open delay")
+            clock.advance(0.099)
+            try require(picks.isEmpty, "A tab must not switch before the dwell")
+            clock.advance(0.002)
+            try require(picks == [.running], "Hovering must switch tabs without a click")
+        }
+        try run("opening under a still pointer keeps the tab the bar was entered on") {
+            let clock = ManualScheduler(); var picks: [Tab] = []
+            let s = selector(clock) { picks.append($0) }
+            s.pointerMoved(to: CGPoint(x: -60, y: 17), tabs: compact)
+            clock.advance(0.101)
+            try require(open[.input]!.contains(CGPoint(x: -60, y: 17)), "Fixture: the open bar puts Input under this point")
+            // The panel widens; AppKit re-reports the same point, then the hand twitches.
+            s.pointerMoved(to: CGPoint(x: -60, y: 17), tabs: open)
+            s.pointerMoved(to: CGPoint(x: -58, y: 18), tabs: open)
+            clock.advance(1)
+            try require(picks == [.running] && s.pendingTab == nil, "Tabs sliding under a still pointer must not switch")
+            s.pointerMoved(to: CGPoint(x: 90, y: 17), tabs: open)
+            clock.advance(0.101)
+            try require(picks == [.running, .review], "Moving onto another tab after opening switches to it")
+        }
+        try run("sweeping across tabs selects only where the pointer rests") {
+            let clock = ManualScheduler(); var picks: [Tab] = []
+            let s = selector(clock) { picks.append($0) }
+            s.pointerMoved(to: CGPoint(x: -150, y: 17), tabs: open)
+            clock.advance(0.050)
+            s.pointerMoved(to: CGPoint(x: 0, y: 17), tabs: open)
+            clock.advance(0.050)
+            s.pointerMoved(to: CGPoint(x: 100, y: 17), tabs: open)
+            clock.advance(0.099)
+            try require(picks.isEmpty, "Tabs passed on the way must not flash")
+            clock.advance(0.002)
+            try require(picks == [.review], "The tab the pointer stops on is selected")
+        }
+        try run("moving within one tab does not restart the dwell") {
+            let clock = ManualScheduler(); var picks: [Tab] = []
+            let s = selector(clock) { picks.append($0) }
+            s.pointerMoved(to: CGPoint(x: -150, y: 10), tabs: open)
+            clock.advance(0.060)
+            s.pointerMoved(to: CGPoint(x: -120, y: 25), tabs: open)
+            clock.advance(0.041)
+            try require(picks == [.running] && clock.jobs.count == 1, "Small moves inside a tab must not delay the switch")
+        }
+        try run("leaving the tabs or the panel cancels a pending switch; a fresh entry works") {
+            let clock = ManualScheduler(); var picks: [Tab] = []
+            let s = selector(clock) { picks.append($0) }
+            s.pointerMoved(to: CGPoint(x: 0, y: 17), tabs: open)
+            s.pointerMoved(to: CGPoint(x: 0, y: 120), tabs: open)
+            clock.advance(1)
+            try require(picks.isEmpty, "Moving down into the task list before the dwell must not switch")
+            s.pointerMoved(to: CGPoint(x: 100, y: 17), tabs: open)
+            s.pointerLeft()
+            clock.advance(1)
+            try require(picks.isEmpty && s.pendingTab == nil, "Leaving the panel must cancel")
+            s.pointerMoved(to: CGPoint(x: 100, y: 17), tabs: open)
+            clock.advance(0.101)
+            try require(picks == [.review], "Re-entering from outside counts as moving onto the tab")
+        }
+        try run("after a drop the pointer's resting place selects nothing; moving on does") {
+            let clock = ManualScheduler(); var picks: [Tab] = []
+            let s = selector(clock) { picks.append($0) }
+            s.pointerSettled(at: CGPoint(x: 0, y: 17))
+            s.pointerMoved(to: CGPoint(x: 1, y: 18), tabs: open)
+            clock.advance(1)
+            try require(picks.isEmpty, "A twitch over the tab the panel was dropped on must not switch")
+            s.pointerMoved(to: CGPoint(x: 100, y: 17), tabs: open)
+            clock.advance(0.101)
+            try require(picks == [.review], "Moving onto another tab still switches")
+        }
+        try run("a stale tab callback cannot fire after a newer move") {
+            let clock = ManualScheduler(); var picks: [Tab] = []
+            let s = selector(clock) { picks.append($0) }
+            s.pointerMoved(to: CGPoint(x: -150, y: 17), tabs: open)
+            s.pointerMoved(to: CGPoint(x: 100, y: 17), tabs: open)
+            clock.forceFire(0)
+            try require(picks.isEmpty, "A replaced selection must be ignored even if its timer fires")
+            clock.advance(0.101)
+            try require(picks == [.review], "The newer tab is still selected")
+        }
+        try run("pending tab work does not retain a discarded selector") {
+            let clock = ManualScheduler(); var picks: [Tab] = []
+            var s: HoverTabSelector<Tab>? = selector(clock) { picks.append($0) }
+            let isReleased = { [weak s] in s == nil }
+            s?.pointerMoved(to: CGPoint(x: -150, y: 17), tabs: open)
+            s = nil
+            clock.forceFire(0)
+            try require(isReleased() && picks.isEmpty, "Pending work must not keep the selector alive")
         }
 
         // Use real default delays with generous polling bounds, not timing-sensitive sleeps.

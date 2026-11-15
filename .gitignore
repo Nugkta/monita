@@ -13,7 +13,6 @@ node_modules/
 .cache/
 __pycache__/
 task-island/bridge.mjs
-task-island/probe-claude-chat.mjs
 task-island/*.test.mjs
 task-island/backups/
 task-island/previous-install-*/

@@ -9,7 +9,9 @@ Task Island is an independent, experimental project. It uses local app data and 
 ## Features
 
 - A 216 × 34 floating bar with Running, Input, and Review counts.
-- Hover to expand; move away to collapse. The panel stays near the top of the screen and can be dragged or attached to a supported Mac's notch.
+- Hover to expand; move away to collapse. Resting on Running, Input, or Review for a moment switches to it; a click still works.
+- Drag the floating panel anywhere; it keeps its top centre as it opens and closes, and centres itself when dropped near the middle of the screen.
+- On a Mac with a camera housing (notch), push the panel up into the menu bar over the housing to dock it as an island: Running to the left of the housing, Input and Review to the right, no taller than the menu bar. Drag it off to undock.
 - One compact task list: Codex in blue, Claude in orange, with Open and Reviewed actions.
 - A durable, task-grouped review queue. Opening a task does not mark it reviewed. Confirming a row acknowledges only the results captured by that action; later results remain pending.
 - Quiet, distinct completion and input sounds, with a persistent Sound Effects switch.
@@ -105,11 +107,6 @@ Own review state is saved with private permissions and atomic replacement under:
 ```
 
 It contains task titles, result identities, and explicit review receipts, not answer bodies. The aggregate `runtime-status.json` in the same directory is for diagnostics. Do not include these files, source-app caches, screenshots of real tasks, credentials, or diagnostic dumps in public issues.
-
-The optional `probe-claude-chat.ts` diagnostic can inspect whole local JSON/cache
-values and log tails before reducing its output. It is not launched by the app.
-Review any collected output before sharing it; no collected outputs are included
-in this repository.
 
 ## Project layout
 

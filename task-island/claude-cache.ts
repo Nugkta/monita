@@ -290,9 +290,7 @@ export function sanitizeCacheSnapshot(value: unknown, now = Date.now(), ttl = TT
 
 // Explicit origin, database, store, and primary-key allowlist. All temporary raw
 // data is deleted before this function returns; never touch Chrome auth stores.
-export function readClaudeCache(options: { originDir?: string; now?: number; ttlMs?: number; onDiagnostic?: (phase: string) => void;
-  /** Diagnostics only: sees the decoded value once per changed cache generation, before it is reduced. The bridge never passes this. */
-  inspect?: (value: unknown) => void } = {}): ClaudeCacheSnapshot {
+export function readClaudeCache(options: { originDir?: string; now?: number; ttlMs?: number; onDiagnostic?: (phase: string) => void } = {}): ClaudeCacheSnapshot {
   const origin = options.originDir ?? join(homedir(), 'Library/Application Support/Claude/IndexedDB/https_claude.ai_0.indexeddb.leveldb');
   const now = options.now ?? Date.now(), ttl = options.ttlMs ?? TTL;
   let temp: string | undefined, phase = 'copy';
@@ -356,7 +354,6 @@ export function readClaudeCache(options: { originDir?: string; now?: number; ttl
       return readFileSync(copy);
     };
     phase = 'structured-clone'; const value = decodedValue(selected.value, loadBlob, budget);
-    if (options.inspect) { try { options.inspect(value); } catch { /* a diagnostic must not change the result */ } }
     phase = 'catalog'; const snapshot = sanitizeCacheSnapshot(value, now, ttl);
     memo = { origin, generation, ttl, blob: selectedBlob, snapshot };
     return expireSnapshot(snapshot, now, ttl);

@@ -1,4 +1,4 @@
 {
   "extends": "../monitor-probe/tsconfig.json",
-  "include": ["bridge.ts", "bridge-core.ts", "bridge.test.ts", "claude-runtime.test.ts", "codex-host.test.ts", "claude-cache.ts", "claude-cache.test.ts", "probe-claude-chat.ts", "probe-claude-chat.test.ts"]
+  "include": ["bridge.ts", "bridge-core.ts", "bridge.test.ts", "claude-runtime.test.ts", "codex-host.test.ts", "claude-cache.ts", "claude-cache.test.ts"]
 }
