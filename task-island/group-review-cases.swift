@@ -148,8 +148,11 @@ struct GroupReviewCases {
             try require(m.count(.review) == 1 && m.currentReviewGroup?.items.count == 2,
                         "Source-read receipt is distinct from explicit grouped review confirmation")
             m.apply(snapshot([task(state: .running, result: nil)]), nowMs: now)
-            try require(m.count(.running, provider: .codex) == 1 && m.count(.review, provider: .codex) == 1,
-                        "Previous results must remain inspectable while their task runs again")
+            try require(m.count(.running, provider: .codex) == 1 && m.count(.review, provider: .codex) == 0 && m.pendingResults.count == 2,
+                        "While the task runs again it is listed only under Running; both results stay queued")
+            m.apply(snapshot([task(state: .idle, result: nil)]), nowMs: now)
+            try require(m.count(.review, provider: .codex) == 1 && m.currentReviewGroup?.items.count == 2,
+                        "When it stops, the group returns with both results, still unacknowledged")
         }
         try run("group confirmations and remaining provider queue survive restart") {
             let m = model("restart", persist: true)

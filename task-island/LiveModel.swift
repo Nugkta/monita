@@ -225,11 +225,23 @@ final class LiveModel: ObservableObject {
         guard providers.contains(where: { ["live", "degraded"].contains($0.health) }) else { return "Offline" }
         return tasks.contains(where: { displayState($0) == .unknown }) ? "Partial" : "Local"
     }
-    var currentResult: ReviewItem? {
-        if let selectedResultID, let item = pendingResults.first(where: { $0.id == selectedResultID }) { return item }
-        return pendingResults.first
+    /// Sessions confirmed running right now. A stale "last seen running" row is not one.
+    private var runningSessions: Set<String> {
+        Set(tasks.filter { displayState($0) == .running }.map { Self.sessionIdentity($0) })
     }
-    var pendingReviewGroups: [ReviewGroup] { groupedReviews(pendingResults) }
+    /// Pending results shown in Review. A session that is running again keeps its
+    /// queued results in the ledger, unacknowledged, but they stay out of Review
+    /// until it stops, so one task is never listed under both Running and Review.
+    var visiblePendingResults: [ReviewItem] {
+        let running = runningSessions
+        return running.isEmpty ? pendingResults : pendingResults.filter { !running.contains(Self.sessionIdentity($0.task)) }
+    }
+    var currentResult: ReviewItem? {
+        let visible = visiblePendingResults
+        if let selectedResultID, let item = visible.first(where: { $0.id == selectedResultID }) { return item }
+        return visible.first
+    }
+    var pendingReviewGroups: [ReviewGroup] { groupedReviews(visiblePendingResults) }
     var currentReviewGroup: ReviewGroup? {
         if let selectedResultID, let group = pendingReviewGroups.first(where: { $0.items.contains(where: { $0.id == selectedResultID }) }) {
             return group
@@ -240,7 +252,7 @@ final class LiveModel: ObservableObject {
         tasks.filter { $0.provider == provider.rawValue }
     }
     func reviewGroups(for provider: TaskProvider) -> [ReviewGroup] {
-        groupedReviews(pendingResults.filter { $0.task.provider == provider.rawValue })
+        groupedReviews(visiblePendingResults.filter { $0.task.provider == provider.rawValue })
     }
     private func groupedReviews(_ items: [ReviewItem]) -> [ReviewGroup] {
         var order: [String] = []
@@ -552,12 +564,13 @@ final class LiveModel: ObservableObject {
         rebuildPending()
     }
     func skip() {
-        guard !pendingResults.isEmpty else { return }
-        let index = pendingResults.firstIndex(where: { $0.id == currentResult?.id }) ?? 0
-        selectReview(pendingResults[(index + 1) % pendingResults.count].id)
+        let visible = visiblePendingResults
+        guard !visible.isEmpty else { return }
+        let index = visible.firstIndex(where: { $0.id == currentResult?.id }) ?? 0
+        selectReview(visible[(index + 1) % visible.count].id)
     }
     func selectReview(_ id: String) {
-        guard pendingResults.contains(where: { $0.id == id }) else { return }
+        guard visiblePendingResults.contains(where: { $0.id == id }) else { return }
         selectedResultID = id
         cancelNavigation()
         objectWillChange.send()

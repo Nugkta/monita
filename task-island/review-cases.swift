@@ -58,13 +58,25 @@ struct ReviewCases {
             m.apply(snapshot([task(state: .read)]), nowMs: now)
             try require(m.currentResult?.id == identity && m.count(.review) == 1, "Opening elsewhere must not acknowledge review")
         }
-        try run("resumed work preserves the earlier completion for inspection") {
+        try run("resumed work leaves Review while running and returns, unacknowledged, when it stops") {
             let m = model("resumed")
             m.apply(snapshot([task()]), nowMs: now)
             let old = m.currentResult!
             m.apply(snapshot([task(state: .running, result: nil)]), nowMs: now)
-            try require(m.count(.running) == 1 && m.count(.review) == 1 && m.isHistorical(old),
-                        "Earlier result must survive resumed activity as historical")
+            try require(m.count(.running) == 1 && m.count(.review) == 0 && m.pendingReviewGroups.isEmpty && m.currentResult == nil,
+                        "A running task must not also be listed in Review")
+            try require(m.pendingResults.map(\.id) == [old.id], "Hiding is not acknowledging: the result stays queued")
+            m.apply(snapshot([task(state: .idle, result: nil)]), nowMs: now)
+            try require(m.count(.running) == 0 && m.count(.review) == 1 && m.currentResult?.id == old.id && m.isHistorical(old),
+                        "Once it stops, the earlier result is back in Review, still to be reviewed")
+        }
+        try run("a stale running observation does not hide a result") {
+            let m = model("stale-running")
+            m.apply(snapshot([task()]), nowMs: now)
+            m.apply(snapshot([task(state: .running, result: nil)]), nowMs: now)
+            m.disconnected()
+            try require(m.count(.running) == 0 && m.count(.review) == 1,
+                        "Only confirmed running hides a result; unknown state shows it")
         }
         try run("acknowledging a captured older result never clears the newer result") {
             let m = model("rapid")
