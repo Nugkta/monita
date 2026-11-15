@@ -8,6 +8,7 @@ import Foundation
     let ids = try JSONDecoder().decode([String].self, from: data)
     guard ids.count <= 10_000, ids.allSatisfy({ $0.count <= 8_192 }) else { throw CocoaError(.fileReadCorruptFile) }
     let captured = Set(ids)
+    // Original project name, kept so existing review history carries over.
     let state = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("TaskIsland", isDirectory: true)
     let model = LiveModel(stateDirectory: state)

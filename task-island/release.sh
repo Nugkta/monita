@@ -13,7 +13,7 @@ sh task-island/test-sound-effects-cases.sh
 sh task-island/test-hover-expansion-cases.sh
 sh task-island/test-panel-motion-cases.sh
 sh task-island/build.sh
-"task-island/Task Island.app/Contents/MacOS/TaskIsland" --self-check
+"task-island/Monita.app/Contents/MacOS/Monita" --self-check
 if [ "${1:-}" = "--install" ]; then
   python3 task-island/update-installed.py
 else

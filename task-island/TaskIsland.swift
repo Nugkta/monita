@@ -20,6 +20,8 @@ struct LaunchOptions {
             guard index + 1 < args.count, !args[index + 1].hasPrefix("--") else { throw Invalid.arguments }
             return args[index + 1]
         }
+        // The data folder keeps the project's original name, so review history and
+        // settings from before the rename to Monita carry over.
         let defaultState = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("TaskIsland", isDirectory: true)
         var state = defaultState
@@ -845,7 +847,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         p.hidesOnDeactivate = false
         p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = true
-        p.animationBehavior = .none; p.title = options.fixture == nil ? "Task Island" : "Task Island Test"
+        p.animationBehavior = .none; p.title = options.fixture == nil ? "Monita" : "Monita Test"
         p.escape = { [weak self] in self?.model.expanded = false }
         let hosting = IslandHostingView(rootView: TaskIslandView(model: model, synthetic: options.fixture != nil, quit: {
             NSApplication.shared.terminate(nil)
@@ -861,8 +863,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
         item.button?.title = "◉ Connecting"
         let menu = NSMenu()
-        menu.addItem(withTitle: "Show Task Island", action: #selector(showPanel), keyEquivalent: "")
-        menu.addItem(withTitle: "Hide Task Island", action: #selector(hidePanel), keyEquivalent: "")
+        menu.addItem(withTitle: "Show Monita", action: #selector(showPanel), keyEquivalent: "")
+        menu.addItem(withTitle: "Hide Monita", action: #selector(hidePanel), keyEquivalent: "")
         let placementItem = menu.addItem(withTitle: "Movable Panel", action: #selector(toggleFloating(_:)), keyEquivalent: "")
         placementItem.state = forceFloating ? .on : .off
         self.placementItem = placementItem
@@ -870,7 +872,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         soundItem.state = sounds.isEnabled ? .on : .off
         menu.addItem(withTitle: "Reconnect", action: #selector(reconnect), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Task Island", action: #selector(quit), keyEquivalent: "q")
+        menu.addItem(withTitle: "Quit Monita", action: #selector(quit), keyEquivalent: "q")
         for entry in menu.items { entry.target = self }
         item.menu = menu
         model.$expanded.dropFirst().sink { [weak self] expanded in
@@ -1538,7 +1540,7 @@ struct TaskIslandMain {
             app.delegate = delegate
             withExtendedLifetime(delegate) { app.run() }
         } catch {
-            fputs("Invalid Task Island launch arguments.\n", stderr)
+            fputs("Invalid Monita launch arguments.\n", stderr)
             exit(2)
         }
     }

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Double-click in Finder: runs every check, builds, and replaces the installed
-# Task Island only if all of it passes. The previous app is kept as a backup.
+# Monita only if all of it passes. The previous app is kept as a backup.
 # The full output is also kept in task-island/.install-log.txt.
 cd "$(dirname "$0")/.." || exit 1
 log=task-island/.install-log.txt

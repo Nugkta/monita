@@ -1,7 +1,7 @@
 """Build docs/assets/demo.gif from the app's own synthetic previews.
 
 Run after `sh task-island/release.sh` has built the app. Every panel image comes
-from `TaskIsland --render-preview`, which uses built-in sample tasks only; no real
+from `Monita --render-preview`, which uses built-in sample tasks only; no real
 task, title or screen is captured. The menu bar, notch, pointer and captions are
 drawn here. Requires Pillow (`python3 -m pip install Pillow`).
 
@@ -15,7 +15,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-APP = ROOT / 'task-island/Task Island.app/Contents/MacOS/TaskIsland'
+APP = ROOT / 'task-island/Monita.app/Contents/MacOS/Monita'
 OUT = ROOT / 'docs/assets/demo.gif'
 S = 2                       # previews are rendered at 2x
 W, H = 600, 380             # canvas in points
