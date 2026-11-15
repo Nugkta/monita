@@ -216,12 +216,3 @@ test('query iteration is bounded before traversal and only the first persisted p
   const firstPage = cache([]); (firstPage.clientState.queries[1].state.data as any).pages.push({ data: [row()] });
   assert.equal(sanitizeCacheSnapshot(firstPage, now).sessions.length, 0);
 });
-
-test('the diagnostic hook sees a decoded value once per cache generation and cannot change the result', t => {
-  const dir = fixture(t); let calls = 0, sawQueries = false;
-  const inspect = (value: unknown) => { calls++; sawQueries = Array.isArray((value as any)?.clientState?.queries); throw new Error('ignored'); };
-  const first = readClaudeCache({ originDir: dir, now, inspect });
-  assert.equal(first.status, 'fresh'); assert.equal(calls, 1); assert.equal(sawQueries, true);
-  const again = readClaudeCache({ originDir: dir, now, inspect });
-  assert.equal(again.sessions.length, first.sessions.length); assert.equal(calls, 1, 'an unchanged cache is not decoded again');
-});

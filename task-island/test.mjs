@@ -2,7 +2,7 @@ import { build } from '../monitor-probe/runtime/node_modules/esbuild/lib/main.js
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 const entries=['task-island/bridge.test.ts','task-island/claude-runtime.test.ts',
-  'task-island/codex-host.test.ts','task-island/claude-cache.test.ts','task-island/probe-claude-chat.test.ts'];
+  'task-island/codex-host.test.ts','task-island/claude-cache.test.ts'];
 await build({entryPoints:entries,outdir:'task-island/.test-build',
   outExtension:{'.js':'.mjs'},
   bundle:true,platform:'node',format:'esm',target:'node22',

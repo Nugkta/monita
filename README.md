@@ -1,15 +1,22 @@
 # Task Island
 
-A compact, native macOS status bar for Codex and Claude Code tasks. Keep an eye on work while using other apps, then review finished results in one small queue.
+A compact, native macOS status bar for **Codex** and **Claude Code** tasks. Keep an eye on work while using other apps, then review finished results in one small queue.
 
-<img src="docs/assets/review.png" alt="Synthetic Task Island review queue" width="440">
+> [!IMPORTANT]
+> **Codex and Claude Code only, not chat.** Task Island follows coding tasks in the Codex desktop app and in Claude Code. It does not follow Claude chat conversations (claude.ai or the Claude app's Chat tab), Cowork, or ChatGPT chats, and there are no plans to add them.
+
+<img src="docs/assets/demo.gif" alt="Animated demo with built-in sample tasks: hovering opens the panel and switches between Running, Input, and Review; dragging it into the menu bar docks it beside the notch, where the ears are the tabs" width="600">
+
+<sub>Demo built from the app's synthetic previews (sample tasks, no real data) by <code>docs/make-demo.py</code>.</sub>
 
 Task Island is an independent, experimental project. It uses local app data and private desktop protocols, so coverage can change when Codex or Claude updates.
 
 ## Features
 
 - A 216 × 34 floating bar with Running, Input, and Review counts.
-- Hover to expand; move away to collapse. The panel stays near the top of the screen and can be dragged or attached to a supported Mac's notch.
+- Hover to expand; move away to collapse. Resting on Running, Input, or Review for a moment switches to it; a click still works.
+- Drag the floating panel anywhere; it keeps its top centre as it opens and closes, and centres itself when dropped near the middle of the screen.
+- On a Mac with a camera housing (notch), push the panel up into the menu bar over the housing to dock it as an island: Running to the left of the housing, Input and Review to the right, no taller than the menu bar. Drag it off to undock.
 - One compact task list: Codex in blue, Claude in orange, with Open and Reviewed actions.
 - A durable, task-grouped review queue. Opening a task does not mark it reviewed. Confirming a row acknowledges only the results captured by that action; later results remain pending.
 - Quiet, distinct completion and input sounds, with a persistent Sound Effects switch.
@@ -24,7 +31,7 @@ Task Island is an independent, experimental project. It uses local app data and 
 | Claude Code desktop records | Local runtime registry when present; persisted successful-turn and error identities independent of runtime | Remote/SSH tasks may have completion records without locally observable running/input state. Real-session coverage depends on the desktop version. |
 | Claude Remote Control list cache | Timestamped running/input/idle observations; inferred endings when an explicitly active observation is followed by a newer idle observation | Not a continuous live feed. Inferred endings are labeled separately and do not claim a successful upstream turn. |
 
-Ordinary Claude chat and Cowork are not supported. The app does not install hooks or configure remote hosts. A task existing only in a stale remote list cannot be made live by refreshing Task Island's own heartbeat.
+Claude chat, Cowork, and ChatGPT chat are not supported; only Codex and Claude Code tasks are. The app does not install hooks or configure remote hosts. A task existing only in a stale remote list cannot be made live by refreshing Task Island's own heartbeat.
 
 ## Requirements
 
@@ -92,6 +99,8 @@ Synthetic offscreen previews do not start source observers or play sounds:
 "task-island/Task Island.app/Contents/MacOS/TaskIsland" --render-preview /tmp/task-island-review.png --floating
 ```
 
+`python3 docs/make-demo.py` rebuilds `docs/assets/demo.gif` from these previews (requires Pillow).
+
 ## Privacy and local state
 
 Task Island does not call a model, generate summaries, send prompts, answer approvals, resume tasks, or upload task content. Its source observers communicate with the native UI through a private pipe containing allowlisted task/navigation metadata.
@@ -105,11 +114,6 @@ Own review state is saved with private permissions and atomic replacement under:
 ```
 
 It contains task titles, result identities, and explicit review receipts, not answer bodies. The aggregate `runtime-status.json` in the same directory is for diagnostics. Do not include these files, source-app caches, screenshots of real tasks, credentials, or diagnostic dumps in public issues.
-
-The optional `probe-claude-chat.ts` diagnostic can inspect whole local JSON/cache
-values and log tails before reducing its output. It is not launched by the app.
-Review any collected output before sharing it; no collected outputs are included
-in this repository.
 
 ## Project layout
 

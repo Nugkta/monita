@@ -178,6 +178,8 @@ struct ScreenMetrics {
     let visibleFrame: NSRect
     let safeTop: CGFloat
     let housingWidth: CGFloat
+    /// Horizontal centre of the camera housing.
+    let housingMidX: CGFloat
     var hasNotch: Bool { safeTop > 0 && housingWidth > 0 }
 
     @MainActor init(screen: NSScreen) {
@@ -186,29 +188,62 @@ struct ScreenMetrics {
         safeTop = screen.safeAreaInsets.top
         if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
             housingWidth = max(0, right.minX - left.maxX)
-        } else { housingWidth = 0 }
+            housingMidX = housingWidth > 0 ? (left.maxX + right.minX) / 2 : screen.frame.midX
+        } else { housingWidth = 0; housingMidX = screen.frame.midX }
     }
-    init(frame: NSRect, visibleFrame: NSRect, safeTop: CGFloat, housingWidth: CGFloat) {
+    init(frame: NSRect, visibleFrame: NSRect, safeTop: CGFloat, housingWidth: CGFloat, housingMidX: CGFloat? = nil) {
         self.frame = frame; self.visibleFrame = visibleFrame
         self.safeTop = safeTop; self.housingWidth = housingWidth
+        self.housingMidX = housingMidX ?? frame.midX
     }
 }
 
 enum PanelLayout {
+    /// Island layout: the tabs sit in ears beside the camera housing, at its height.
+    /// Running alone on the left, Input and Review on the right.
+    static let leftEarWidth: CGFloat = 52
+    static let rightEarWidth: CGFloat = 88
+    /// Height of the tab bar above the task list. In the island the ears hold the tabs instead.
+    static func barHeight(island: Bool) -> CGFloat { island ? 0 : 34 }
+
+    /// `floatingAnchor` is the panel's top centre, so the compact and open panel share
+    /// one centre line and whatever the user lined up stays lined up as it opens and closes.
     static func frame(metrics: ScreenMetrics, expanded: Bool, forceFloating: Bool,
-                      floatingTopLeft: NSPoint? = nil, expandedHeight: CGFloat = 272) -> NSRect {
+                      floatingAnchor: NSPoint? = nil, expandedHeight: CGFloat = 272) -> NSRect {
         let notched = metrics.hasNotch && !forceFloating
         let available = notched ? metrics.frame : metrics.visibleFrame
-        let desiredWidth = expanded ? 440 : notched ? max(320, metrics.housingWidth + 60) : 216
+        let island = metrics.housingWidth + leftEarWidth + rightEarWidth
+        let desiredWidth = notched ? (expanded ? max(440, island) : island) : expanded ? 440 : 216
         let width = min(desiredWidth, max(0, available.width - 24))
-        let height = min((expanded ? min(272, max(148, expandedHeight)) : 34) + (notched ? metrics.safeTop : 0), max(0, available.height - 24))
+        // `expandedHeight` counts a 34pt tab bar; the task list is the rest.
+        let list = min(272, max(148, expandedHeight)) - 34
+        let height = min((notched ? metrics.safeTop : 0) + barHeight(island: notched) + (expanded ? list : 0),
+                         max(0, available.height - 24))
         if notched {
-            return NSRect(x: available.midX - width / 2, y: available.maxY - height, width: width, height: height)
+            // Compact, the ears fit their tabs; open, the list hangs centred under the housing.
+            let housingMinX = metrics.housingMidX - metrics.housingWidth / 2
+            let preferredX = expanded ? metrics.housingMidX - width / 2 : housingMinX - leftEarWidth
+            let x = min(max(preferredX, available.minX), available.maxX - width)
+            return NSRect(x: x, y: available.maxY - height, width: width, height: height)
         }
-        let anchor = floatingTopLeft ?? NSPoint(x: available.midX - width / 2, y: available.maxY - 12)
-        let x = min(max(anchor.x, available.minX + 12), available.maxX - width - 12)
+        let anchor = floatingAnchor ?? NSPoint(x: available.midX, y: available.maxY - 12)
+        let x = min(max(anchor.x - width / 2, available.minX + 12), available.maxX - width - 12)
         let top = min(max(anchor.y, available.minY + height + 12), available.maxY - 12)
         return NSRect(x: x, y: top - height, width: width, height: height)
+    }
+
+    enum Drop: Equatable { case dock, float(NSPoint) }
+    /// Where a floating panel goes when the user lets go of it. Pushed up into the menu
+    /// bar over the camera housing, it docks into the island. Near the screen's centre
+    /// line, it sits exactly on it. Otherwise it stays where it was dropped.
+    static func drop(frame: NSRect, metrics: ScreenMetrics) -> Drop {
+        let offset = frame.midX - metrics.housingMidX
+        let reach = metrics.housingWidth / 2 + (offset < 0 ? leftEarWidth : rightEarWidth)
+        if metrics.hasNotch && frame.maxY >= metrics.visibleFrame.maxY - 6 && abs(offset) <= reach {
+            return .dock
+        }
+        let centre = metrics.visibleFrame.midX
+        return .float(NSPoint(x: abs(frame.midX - centre) <= 24 ? centre : frame.midX, y: frame.maxY))
     }
 }
 
@@ -232,7 +267,9 @@ struct IslandShape: Shape {
     var reveal: Double = 0
     func path(in rect: CGRect) -> Path {
         guard attached else { return Path(roundedRect: rect, cornerRadius: CGFloat(PanelReveal.cornerRadius(reveal))) }
-        let radius: CGFloat = 18
+        // Hangs from the top edge: square top, rounded bottom. Tighter while it is
+        // only the strip beside the camera housing.
+        let radius = min(rect.height / 2, CGFloat(12 + 6 * min(1, max(0, reveal))))
         var path = Path()
         path.move(to: CGPoint(x: rect.minX, y: rect.minY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
@@ -282,6 +319,14 @@ extension LiveState {
         case .error: return Color(red: 1, green: 0.70, blue: 0.42)
         case .read, .idle, .unknown: return Color(white: 0.65)
         }
+    }
+}
+
+/// The Running, Input and Review tabs' frames, so hovering one can select it.
+struct SummaryTabFrames: PreferenceKey {
+    static var defaultValue: [TaskSection: CGRect] { [:] }
+    static func reduce(value: inout [TaskSection: CGRect], nextValue: () -> [TaskSection: CGRect]) {
+        value.merge(nextValue()) { $1 }
     }
 }
 
@@ -359,8 +404,12 @@ struct TaskIslandView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if model.safeTop > 0 { Color.clear.frame(height: model.safeTop).accessibilityHidden(true) }
-            summary.frame(height: 34)
+            if model.isIsland {
+                islandStrip.frame(height: model.safeTop)
+            } else {
+                if model.safeTop > 0 { Color.clear.frame(height: model.safeTop).accessibilityHidden(true) }
+                summary.frame(height: 34)
+            }
             if model.expanded || model.reveal > 0.001 {
                 // While the frame is moving the body keeps its final size and its final
                 // place on screen and is uncovered by the growing panel, so its text never
@@ -380,10 +429,18 @@ struct TaskIslandView: View {
             }
         }
         .foregroundStyle(Color.white)
-        .background(Color(white: 0.065))
+        // Docked, it is black like the camera housing it grows out of.
+        .background(model.isIsland ? Color.black : Color(white: 0.065))
         .clipShape(IslandShape(attached: model.safeTop > 0, reveal: model.reveal))
-        .overlay { IslandShape(attached: model.safeTop > 0, reveal: model.reveal).stroke(Color.white.opacity(0.10), lineWidth: 0.5) }
+        .overlay {
+            IslandShape(attached: model.safeTop > 0, reveal: model.reveal)
+                .stroke(Color.white.opacity(model.isIsland ? 0.10 * model.reveal : 0.10), lineWidth: 0.5)
+        }
         .preferredColorScheme(.dark)
+        // Tabs live in the floating bar or the island's ears; either reports here.
+        .onPreferenceChange(SummaryTabFrames.self) { [model] frames in
+            MainActor.assumeIsolated { model.tabFrames = frames }
+        }
     }
 
     private var summary: some View {
@@ -407,18 +464,43 @@ struct TaskIslandView: View {
         }.padding(.horizontal, 8)
     }
 
+    /// Docked: Running in the ear left of the camera housing, Input and Review in the
+    /// ear to its right. The housing itself stays empty inside the same black shape.
+    /// Icons and counts only; the open panel's header names the selected tab.
+    private var islandStrip: some View {
+        HStack(spacing: 0) {
+            countButton(.running, label: "Running", color: LiveState.running.color, symbol: "play.fill", labels: 0, emphasis: model.reveal)
+                .padding(.leading, 6).frame(width: max(0, model.notchLeading))
+                // A badge, not a sibling: the narrow ear keeps its whole width for the count.
+                .overlay(alignment: .topLeading) {
+                    if model.isStale {
+                        Image(systemName: "exclamationmark.circle.fill").font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.6)).padding(.leading, 4).padding(.top, 3)
+                            .accessibilityLabel("Disconnected").help("Disconnected")
+                    }
+                }
+            Color.clear.frame(width: model.notchWidth).accessibilityHidden(true)
+            HStack(spacing: 2) {
+                countButton(.input, label: "Input", color: LiveState.input.color, symbol: "pause.fill", labels: 0, emphasis: model.reveal)
+                countButton(.review, label: "Review", color: LiveState.review.color, symbol: "tray.full.fill", labels: 0, emphasis: model.reveal)
+            }.padding(.trailing, 6).frame(maxWidth: .infinity)
+        }
+    }
+
     private var summaryDivider: some View {
         Rectangle().fill(Color.white.opacity(0.08)).frame(width: 0.5, height: 12).accessibilityHidden(true)
     }
 
-    private func countButton(_ section: TaskSection, label: String, color: Color, symbol: String, labels: Double) -> some View {
+    /// `emphasis` is how strongly the selected tab is marked; it follows the labels in the
+    /// floating bar and the opening panel in the island, where there are no labels.
+    private func countButton(_ section: TaskSection, label: String, color: Color, symbol: String, labels: Double, emphasis: Double? = nil) -> some View {
         let count = model.count(section)
         // Last seen running, observation since expired: shown hollow, never counted as confirmed.
         let unconfirmed = section == .running ? model.unconfirmedRunningCount : 0
         let hollow = count == 0 && unconfirmed > 0
         let shown = hollow ? unconfirmed : count
         let selected = model.selection == section
-        let highlight = max(selected ? 0.075 * labels : 0, hoveredSection == section ? 0.04 : 0)
+        let highlight = max(selected ? 0.075 * (emphasis ?? labels) : 0, hoveredSection == section ? 0.04 : 0)
         let countDescription = "\(label): \(count) \(count == 1 ? "task" : "tasks")" +
             (unconfirmed > 0 ? " · \(unconfirmed) last seen running, awaiting sync" : "")
         return Button { model.selection = section; model.expanded = true } label: {
@@ -442,6 +524,9 @@ struct TaskIslandView: View {
                 .contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityLabel(countDescription)
             .help(countDescription)
+            .background(GeometryReader { proxy in
+                Color.clear.preference(key: SummaryTabFrames.self, value: [section: proxy.frame(in: .global)])
+            })
             .onHover { hovering in
                 if hovering { hoveredSection = section }
                 else if hoveredSection == section { hoveredSection = nil }
@@ -627,6 +712,8 @@ final class IslandPanel: NSPanel {
 
 final class IslandHostingView<Content: View>: NSHostingView<Content> {
     var onPointerChange: ((Bool) -> Void)?
+    /// Real pointer movement inside the panel, in screen coordinates.
+    var onPointerMove: ((NSPoint) -> Void)?
     var pointerLocation: () -> NSPoint = { NSEvent.mouseLocation }
     private var hoverArea: NSTrackingArea?
 
@@ -634,7 +721,7 @@ final class IslandHostingView<Content: View>: NSHostingView<Content> {
 
     override func updateTrackingAreas() {
         if let hoverArea { removeTrackingArea(hoverArea) }
-        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
                                   owner: self, userInfo: nil)
         addTrackingArea(area)
         hoverArea = area
@@ -651,9 +738,28 @@ final class IslandHostingView<Content: View>: NSHostingView<Content> {
         onPointerChange?(window?.isVisible == true && containsScreenPoint(pointerLocation()))
     }
 
+    /// A rect in SwiftUI's global space for this view (top-left origin) on screen.
+    func screenRect(fromSwiftUI rect: CGRect) -> CGRect? {
+        guard let window else { return nil }
+        let local = isFlipped ? rect : CGRect(x: rect.minX, y: bounds.height - rect.maxY, width: rect.width, height: rect.height)
+        return window.convertToScreen(convert(local, to: nil))
+    }
+
+    private func reportPointerMove() {
+        let point = pointerLocation()
+        if window?.isVisible == true && containsScreenPoint(point) { onPointerMove?(point) }
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        reportPointerMove()
+    }
+
     override func mouseEntered(with event: NSEvent) {
         super.mouseEntered(with: event)
         reconcilePointer()
+        // No move is reported here: resizing generates entries under a still pointer,
+        // and only real movement may select a tab.
     }
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
@@ -678,6 +784,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.applyingHoverExpansion = false
         }
     })
+    // Hovering Running, Input or Review selects it; a click still does too.
+    private lazy var tabHover = HoverTabSelector<TaskSection>(onSelect: { [weak self] section in
+        guard let self, self.panel?.isVisible == true, self.trackingMenus == 0, !self.model.navigationPending,
+              self.model.selection != section else { return }
+        self.model.selection = section
+    })
     private var pointerView: IslandHostingView<TaskIslandView>?
     private var trackingMenus = 0
     // Frame motion. Present only while the panel is moving between sizes.
@@ -690,7 +802,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private var smokeTimer: Timer?
     private var forceFloating: Bool
-    private var floatingTopLeft: NSPoint?
+    /// Top centre of the floating panel once the user has moved it.
+    private var floatingAnchor: NSPoint?
+    /// Present while the window server drags the floating panel.
+    private var dragTimer: Timer?
+    /// Dragging the docked island off the housing; the app moves the panel itself.
+    private var dockedDrag = DockedDrag()
+    private var dockedPoll: Timer?
+    private var followingPointer = false
+    private var mouseMonitor: Any?
+    private var housingMinX: CGFloat = 0
+    private var isDragging: Bool { dragTimer != nil || followingPointer }
+    private var placementItem: NSMenuItem?
     private var relocating = false
     private var finalReportWritten = false
     private var instanceLock: Int32 = -1
@@ -727,7 +850,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hosting = IslandHostingView(rootView: TaskIslandView(model: model, synthetic: options.fixture != nil, quit: {
             NSApplication.shared.terminate(nil)
         }))
-        hosting.onPointerChange = { [weak self] inside in self?.hover.pointerChanged(isInside: inside) }
+        hosting.onPointerChange = { [weak self] inside in
+            self?.hover.pointerChanged(isInside: inside)
+            if !inside { self?.tabHover.pointerLeft() }
+        }
+        hosting.onPointerMove = { [weak self] point in self?.pointerMoved(to: point) }
         pointerView = hosting
         p.contentView = hosting
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -738,6 +865,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Hide Task Island", action: #selector(hidePanel), keyEquivalent: "")
         let placementItem = menu.addItem(withTitle: "Movable Panel", action: #selector(toggleFloating(_:)), keyEquivalent: "")
         placementItem.state = forceFloating ? .on : .off
+        self.placementItem = placementItem
         let soundItem = menu.addItem(withTitle: "Sound Effects", action: #selector(toggleSounds(_:)), keyEquivalent: "")
         soundItem.state = sounds.isEnabled ? .on : .off
         menu.addItem(withTitle: "Reconnect", action: #selector(reconnect), keyEquivalent: "")
@@ -762,6 +890,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(panelMoved),
                                                name: NSWindow.didMoveNotification, object: p)
+        NotificationCenter.default.addObserver(self, selector: #selector(panelWillMove),
+                                               name: NSWindow.willMoveNotification, object: p)
+        // A docked panel cannot be moved by its background; dragging it off is handled here.
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+            let number = event.windowNumber
+            MainActor.assumeIsolated { self?.islandPressed(windowNumber: number) }
+            return event
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(menuTrackingBegan),
                                                name: NSMenu.didBeginTrackingNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(menuTrackingEnded),
@@ -782,8 +918,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if self.options.fixture == nil { self.model.tick() }
                 self.statusItem?.button?.title = "◉ \(self.model.count(.running)) · \(self.model.count(.input)) · \(self.model.count(.review))"
                 self.statusItem?.button?.toolTip = nil
-                if self.model.expanded, let panel = self.panel,
-                   abs(panel.frame.height - self.model.preferredPanelHeight - self.model.safeTop) > 0.5 { self.relayout(animated: true) }
+                if self.model.expanded, let panel = self.panel, let open = self.targetFrame(expanded: true),
+                   abs(panel.frame.height - open.height) > 0.5 { self.relayout(animated: true) }
                 self.statusTicks += 1
                 if self.statusTicks % 5 == 0 { self.writeAggregateStatus() }
             }
@@ -804,7 +940,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func targetFrame(expanded: Bool) -> NSRect? {
         guard let screen = targetScreen() else { return nil }
         return PanelLayout.frame(metrics: ScreenMetrics(screen: screen), expanded: expanded, forceFloating: forceFloating,
-                                 floatingTopLeft: floatingTopLeft, expandedHeight: model.preferredPanelHeight)
+                                 floatingAnchor: floatingAnchor, expandedHeight: model.preferredPanelHeight)
     }
     /// Motion is skipped when the panel is hidden or the system asks for less of it.
     private var motionAllowed: Bool {
@@ -814,7 +950,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func revealMotion(progress: Double, panelX: Double) -> RevealMotion? {
         guard let open = targetFrame(expanded: true) else { return nil }
         return RevealMotion(progress: progress,
-                            bodyWidth: open.width, bodyHeight: max(0, open.height - 34 - model.safeTop),
+                            bodyWidth: open.width, bodyHeight: max(0, open.height - PanelLayout.barHeight(island: model.isIsland) - model.safeTop),
                             bodyShift: open.minX - CGFloat(panelX))
     }
     private func holdReveal(becoming expanded: Bool) {
@@ -822,13 +958,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.revealMotion = revealMotion(progress: model.expanded ? 1 : 0, panelX: Double(panel.frame.minX))
     }
     private func relayout(animated: Bool = false) {
-        guard let panel, let screen = targetScreen() else { return }
+        // The user is placing the panel; it is laid out again when they let go.
+        guard !isDragging, let panel, let screen = targetScreen() else { return }
         let metrics = ScreenMetrics(screen: screen)
         let notched = metrics.hasNotch && !forceFloating
         model.safeTop = notched ? metrics.safeTop : 0
+        model.notchWidth = notched ? metrics.housingWidth : 0
+        housingMinX = metrics.housingMidX - metrics.housingWidth / 2
         panel.isMovableByWindowBackground = !notched
         let target = PanelLayout.frame(metrics: metrics, expanded: model.expanded, forceFloating: forceFloating,
-                                       floatingTopLeft: floatingTopLeft, expandedHeight: model.preferredPanelHeight)
+                                       floatingAnchor: floatingAnchor, expandedHeight: model.preferredPanelHeight)
         let pending = motion != nil || model.revealMotion != nil || panel.frame != target
         guard animated, motionAllowed, pending else { settle(at: target); return }
         var current = motion ?? PanelMotion(
@@ -874,15 +1013,109 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pointerView?.reconcilePointer()
     }
     private func place(_ frame: NSRect) {
+        let leading = model.isIsland ? housingMinX - frame.minX : 0
+        if model.notchLeading != leading { model.notchLeading = leading }
         guard let panel, panel.frame != frame else { return }
         relocating = true
         panel.setFrame(frame, display: true)
         relocating = false
     }
-    @objc private func screensChanged() { floatingTopLeft = nil; relayout() }
+    @objc private func screensChanged() { floatingAnchor = nil; relayout() }
     @objc private func panelMoved() {
         guard !relocating, model.safeTop == 0, let panel else { return }
-        floatingTopLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+        floatingAnchor = NSPoint(x: panel.frame.midX, y: panel.frame.maxY)
+        beginDragIfPressed()
+    }
+    @objc private func panelWillMove() {
+        guard !relocating, model.safeTop == 0 else { return }
+        beginDragIfPressed()
+    }
+    /// While the user drags the panel it neither opens nor closes under the pointer and
+    /// tab hover is off. The window server moves the window and may not deliver the
+    /// mouse-up, so the button is polled until it is released.
+    private func beginDragIfPressed() {
+        guard dragTimer == nil, NSEvent.pressedMouseButtons & 1 != 0 else { return }
+        // Stop any open/close motion where it is, without moving the window the server
+        // is dragging; it is laid out properly when the user lets go.
+        if motion != nil { settle(at: nil) }
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { if NSEvent.pressedMouseButtons & 1 == 0 { self?.endDrag() } }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        dragTimer = timer
+        hover.setInteractionActive(true)
+        tabHover.pointerLeft()
+    }
+    private func endDrag() {
+        dragTimer?.invalidate()
+        dragTimer = nil
+        applyDrop()
+    }
+    /// Docks over the housing, centres near the centre line, or stays where it was let go.
+    private func applyDrop() {
+        if let panel, model.safeTop == 0, let screen = panel.screen ?? targetScreen() {
+            switch PanelLayout.drop(frame: panel.frame, metrics: ScreenMetrics(screen: screen)) {
+            case .dock: setFloating(false)
+            case .float(let anchor): floatingAnchor = anchor; relayout(animated: true)
+            }
+        }
+        pointerView?.reconcilePointer()
+        tabHover.pointerSettled(at: NSEvent.mouseLocation)
+        hover.setInteractionActive(isDragging || trackingMenus > 0)
+    }
+    private var pointer: DockedDrag.Point {
+        let location = NSEvent.mouseLocation
+        return DockedDrag.Point(x: Double(location.x), y: Double(location.y))
+    }
+    /// A press on the docked island. Its drag events may be consumed by a control's
+    /// own tracking loop, which event monitors never see, so from here the pointer and
+    /// button are polled instead; timers in common mode also run during tracking.
+    private func islandPressed(windowNumber: Int) {
+        guard let panel, windowNumber == panel.windowNumber, model.isIsland, !isDragging, dockedPoll == nil,
+              // Only the ears beside the housing; presses in the open list are for its rows.
+              NSEvent.mouseLocation.y >= panel.frame.maxY - model.safeTop else { return }
+        _ = dockedDrag.pressed(at: pointer, docked: true)
+        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pollDockedDrag() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        dockedPoll = timer
+    }
+    private func pollDockedDrag() {
+        let held = NSEvent.pressedMouseButtons & 1 != 0
+        let step = held ? dockedDrag.dragged(to: pointer) : dockedDrag.released()
+        if !held { dockedPoll?.invalidate(); dockedPoll = nil }
+        switch step {
+        case .pass: break
+        case .undock(let anchor): undock(at: anchor)
+        case .move(let anchor): follow(anchor)
+        case .drop:
+            followingPointer = false
+            applyDrop()
+        }
+    }
+    private func undock(at anchor: DockedDrag.Point) {
+        // SwiftUI saw the mouse-down; release it far from every control so no tab fires.
+        if let panel, let cancel = NSEvent.mouseEvent(with: .leftMouseUp, location: NSPoint(x: -10_000, y: -10_000),
+                modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: panel.windowNumber,
+                context: nil, eventNumber: 0, clickCount: 1, pressure: 0) {
+            pointerView?.mouseUp(with: cancel)
+        }
+        hover.setInteractionActive(true)
+        tabHover.pointerLeft()
+        // Drag the compact capsule, not the open list. Laid out synchronously here; the
+        // expansion observer's own relayout comes later and is skipped while dragging.
+        model.expanded = false
+        setFloating(true, anchor: NSPoint(x: anchor.x, y: anchor.y))
+        followingPointer = true
+        follow(anchor)
+    }
+    /// Unclamped while following, so the panel can be pushed back up over the housing.
+    private func follow(_ anchor: DockedDrag.Point) {
+        guard let panel else { return }
+        let frame = panel.frame
+        floatingAnchor = NSPoint(x: anchor.x, y: anchor.y)
+        place(NSRect(x: anchor.x - frame.width / 2, y: anchor.y - frame.height, width: frame.width, height: frame.height))
     }
     @objc private func showPanel() {
         hover.expansionChanged(model.expanded)
@@ -903,24 +1136,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settle(at: NSRect(x: end.x, y: end.top - end.height, width: end.width, height: end.height))
         }
         hover.cancel()
+        tabHover.pointerLeft()
         panel?.orderOut(nil)
+    }
+    /// Tab frames are measured against the panel as it is laid out now, on screen,
+    /// so tabs sliding under a still pointer while the panel opens never count.
+    private func pointerMoved(to point: NSPoint) {
+        guard panel?.isVisible == true, trackingMenus == 0, !isDragging, let view = pointerView else { return }
+        var tabs: [TaskSection: CGRect] = [:]
+        for (section, rect) in model.tabFrames where section != .all {
+            if let onScreen = view.screenRect(fromSwiftUI: rect) { tabs[section] = onScreen }
+        }
+        tabHover.pointerMoved(to: point, tabs: tabs)
     }
     @objc private func menuTrackingBegan() {
         trackingMenus += 1
         hover.setInteractionActive(true)
+        tabHover.pointerLeft()
     }
     @objc private func menuTrackingEnded() {
         trackingMenus = max(0, trackingMenus - 1)
         if trackingMenus == 0 {
             pointerView?.reconcilePointer()
-            hover.setInteractionActive(false)
+            hover.setInteractionActive(isDragging)
         }
     }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
-    @objc private func toggleFloating(_ sender: NSMenuItem) {
-        forceFloating.toggle(); sender.state = forceFloating ? .on : .off
+    @objc private func toggleFloating(_ sender: NSMenuItem) { setFloating(!forceFloating) }
+    /// Docked beside the camera housing, or a movable panel (at `anchor`, its top centre).
+    private func setFloating(_ floating: Bool, anchor: NSPoint? = nil) {
+        forceFloating = floating
+        placementItem?.state = forceFloating ? .on : .off
         if options.fixture == nil { UserDefaults.standard.set(!forceFloating, forKey: "attachToNotch") }
-        floatingTopLeft = nil; relayout()
+        floatingAnchor = anchor; relayout()
     }
     @objc private func toggleSounds(_ sender: NSMenuItem) {
         guard options.fixture == nil else { return }
@@ -1008,27 +1256,55 @@ func runGeometryChecks() {
     assert(floatingCollapsed.midX == metrics.visibleFrame.midX && floatingExpanded.midX == floatingCollapsed.midX,
            "Default floating placement stays centered as it expands")
     assert(floatingCollapsed.maxY == metrics.visibleFrame.maxY - 12 && floatingExpanded.maxY == floatingCollapsed.maxY)
-    let attachedCollapsed = PanelLayout.frame(metrics: metrics, expanded: false, forceFloating: false)
-    assert(attachedCollapsed.width == 320 && attachedCollapsed.height == metrics.safeTop + 34)
+    // Island: only the menu-bar strip when compact, a 52pt ear left of the housing for
+    // Running and an 88pt ear right of it for Input and Review.
+    let island = PanelLayout.frame(metrics: metrics, expanded: false, forceFloating: false)
+    assert(island.size == NSSize(width: 52 + 210 + 88, height: metrics.safeTop) && island.minX == 756 - 105 - 52,
+           "The compact island is the housing plus a narrow left ear and a wider right ear, no taller than the menu bar")
+    let islandOpen = PanelLayout.frame(metrics: metrics, expanded: true, forceFloating: false)
+    assert(islandOpen.size == NSSize(width: 440, height: metrics.safeTop + 272 - 34) && islandOpen.midX == 756,
+           "Open, the list hangs centred under the housing; no separate tab bar")
+    let offCentre = ScreenMetrics(frame: metrics.frame, visibleFrame: metrics.visibleFrame, safeTop: 32, housingWidth: 200, housingMidX: 760)
+    assert(PanelLayout.frame(metrics: offCentre, expanded: false, forceFloating: false).minX == 760 - 100 - 52 &&
+           PanelLayout.frame(metrics: offCentre, expanded: true, forceFloating: false).midX == 760,
+           "The island follows the housing itself, not the screen centre")
     for expanded in [false, true] {
         let attached = PanelLayout.frame(metrics: metrics, expanded: expanded, forceFloating: false)
-        assert(attached.maxY == metrics.frame.maxY && attached.midX == metrics.frame.midX)
-        assert(attached.height >= metrics.safeTop + 34)
+        assert(attached.maxY == metrics.frame.maxY && attached.minX <= 756 - 105 - 52 && attached.maxX >= 756 + 105 + 88)
+        assert(attached.height >= metrics.safeTop)
         for value in [metrics, other, small] {
             let centered = PanelLayout.frame(metrics: value, expanded: expanded, forceFloating: true)
             assert(centered.midX == value.visibleFrame.midX && centered.maxY == value.visibleFrame.maxY - 12)
             assert(centered.width <= value.visibleFrame.width - 24 && centered.height <= value.visibleFrame.height - 24)
             for anchor in [nil, NSPoint(x: -5000, y: 5000), NSPoint(x: 5000, y: -5000)] {
                 assert(value.visibleFrame.contains(PanelLayout.frame(metrics: value, expanded: expanded,
-                                                                    forceFloating: true, floatingTopLeft: anchor)))
+                                                                    forceFloating: true, floatingAnchor: anchor)))
             }
         }
-        let manualAnchor = NSPoint(x: metrics.visibleFrame.minX + 50, y: metrics.visibleFrame.maxY - 40)
+        let manualAnchor = NSPoint(x: metrics.visibleFrame.minX + 400, y: metrics.visibleFrame.maxY - 40)
         let manuallyPlaced = PanelLayout.frame(metrics: metrics, expanded: expanded,
-                                               forceFloating: true, floatingTopLeft: manualAnchor)
-        assert(manuallyPlaced.minX == manualAnchor.x && manuallyPlaced.maxY == manualAnchor.y,
-               "A user-dragged top-left anchor is preserved while it fits")
+                                               forceFloating: true, floatingAnchor: manualAnchor)
+        assert(manuallyPlaced.midX == manualAnchor.x && manuallyPlaced.maxY == manualAnchor.y,
+               "A user-placed panel keeps its top centre, open or closed")
     }
+    // Letting go of a dragged panel.
+    let underBar = metrics.visibleFrame.maxY
+    func dropped(midX: CGFloat, top: CGFloat, width: CGFloat = 216, on screen: ScreenMetrics = metrics) -> PanelLayout.Drop {
+        PanelLayout.drop(frame: NSRect(x: midX - width / 2, y: top - 34, width: width, height: 34), metrics: screen)
+    }
+    assert(dropped(midX: 756, top: underBar + 10) == .dock, "Pushed into the menu bar over the housing, it docks")
+    assert(dropped(midX: 756 + 105 + 88, top: underBar) == .dock, "An ear's width beside the housing still docks")
+    assert(dropped(midX: 756 - 105 - 52, top: underBar) == .dock, "The left reach is the narrower left ear")
+    assert(dropped(midX: 756 - 105 - 53, top: underBar) == .float(NSPoint(x: 756 - 105 - 53, y: underBar)),
+           "Beyond the left ear it stays where it is")
+    assert(dropped(midX: 756 + 105 + 89, top: underBar) == .float(NSPoint(x: 756 + 105 + 89, y: underBar)),
+           "Further along the menu bar it stays where it is")
+    assert(dropped(midX: 756, top: underBar - 12) == .float(NSPoint(x: 756, y: underBar - 12)),
+           "The default spot under the menu bar does not dock")
+    assert(dropped(midX: 770, top: 600) == .float(NSPoint(x: 756, y: 600)), "Within 24pt of the centre line it centres")
+    assert(dropped(midX: 781, top: 600) == .float(NSPoint(x: 781, y: 600)), "Further off centre it stays put")
+    assert(dropped(midX: -960, top: other.visibleFrame.maxY + 5, on: other) == .float(NSPoint(x: -960, y: other.visibleFrame.maxY + 5)),
+           "A screen without a housing never docks")
     assert(validatedSourceURL("codex://threads/aaaaaa") != nil)
     assert(validatedSourceURL("codex://threads/aaaaaa?hostId=remote-machine:1") != nil)
     assert(validatedSourceURL("claude://code/continue?session=local_sample-1") != nil)
@@ -1059,19 +1335,26 @@ func runHoverTrackingChecks() {
     view.frame = NSRect(origin: .zero, size: panel.frame.size)
     var pointer = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
     var observations: [Bool] = []
+    var moves: [NSPoint] = []
     view.pointerLocation = { pointer }
     view.onPointerChange = { observations.append($0) }
+    view.onPointerMove = { moves.append($0) }
     view.updateTrackingAreas()
     assert(view.trackingAreas.contains {
         ($0.owner as? NSView) === view && $0.options.contains(.activeAlways) &&
-        $0.options.contains(.mouseEnteredAndExited) && $0.options.contains(.inVisibleRect)
-    }, "Hover tracking must work when the panel is not the active window")
+        $0.options.contains(.mouseEnteredAndExited) && $0.options.contains(.mouseMoved) && $0.options.contains(.inVisibleRect)
+    }, "Hover tracking and tab hover must work when the panel is not the active window")
     let enter = NSEvent.enterExitEvent(with: .mouseEntered, location: .zero, modifierFlags: [],
         timestamp: 0, windowNumber: panel.windowNumber, context: nil, eventNumber: 1, trackingNumber: 0, userData: nil)!
     let exit = NSEvent.enterExitEvent(with: .mouseExited, location: .zero, modifierFlags: [],
         timestamp: 0, windowNumber: panel.windowNumber, context: nil, eventNumber: 2, trackingNumber: 0, userData: nil)!
+    let move = NSEvent.mouseEvent(with: .mouseMoved, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: panel.windowNumber, context: nil, eventNumber: 3, clickCount: 0, pressure: 0)!
     view.mouseEntered(with: enter)
     assert(observations.last == true)
+    assert(moves.isEmpty, "An entry alone, which resizing also generates, must not count as pointer movement")
+    view.mouseMoved(with: move)
+    assert(moves == [pointer], "Pointer movement inside the panel is reported in screen coordinates")
     let center = panel.frame.midX, top = panel.frame.maxY
     panel.setFrame(NSRect(x: center - 220, y: top - 210, width: 440, height: 210), display: false)
     view.frame = NSRect(origin: .zero, size: panel.frame.size)
@@ -1084,8 +1367,62 @@ func runHoverTrackingChecks() {
     pointer = NSPoint(x: panel.frame.maxX + 30, y: panel.frame.minY)
     view.mouseExited(with: exit)
     assert(observations.last == false)
+    view.mouseMoved(with: move)
+    assert(moves.count == 1, "Movement outside the panel is not reported")
     panel.contentView = nil
     print("PASS: native inactive-window hover tracking, resize reconciliation and expanded-body bounds; no window shown or cursor moved.")
+}
+
+/// The real panel view, offscreen: the summary tabs report frames that land, on
+/// screen, inside the panel's top bar, left to right, where hover selection looks.
+@MainActor
+func runHoverTabGeometryChecks() {
+    let app = NSApplication.shared
+    app.setActivationPolicy(.prohibited)
+    // Floating compact and open, then the island compact and open beside a 210pt housing.
+    let configurations: [(expanded: Bool, safeTop: CGFloat, notch: CGFloat, leading: CGFloat, frame: NSRect)] = [
+        (false, 0, 0, 0, NSRect(x: 200, y: 300, width: 216, height: 34)),
+        (true, 0, 0, 0, NSRect(x: 88, y: 300, width: 440, height: 272)),
+        (false, 32, 210, 52, NSRect(x: 599, y: 950, width: 350, height: 32)),
+        (true, 32, 210, 115, NSRect(x: 536, y: 712, width: 440, height: 270)),
+    ]
+    for config in configurations {
+        let model = LiveModel(stateDirectory: FileManager.default.temporaryDirectory.appendingPathComponent("task-island-render-unused"),
+                              persist: false)
+        model.expanded = config.expanded
+        model.safeTop = config.safeTop
+        model.notchWidth = config.notch
+        model.notchLeading = config.leading
+        let panel = HoverCheckPanel(contentRect: config.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let view = IslandHostingView(rootView: TaskIslandView(model: model, synthetic: true, quit: {}))
+        panel.contentView = view
+        view.frame = NSRect(origin: .zero, size: config.frame.size)
+        view.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        view.layoutSubtreeIfNeeded()
+        let tabs = model.tabFrames.compactMapValues { view.screenRect(fromSwiftUI: $0) }
+        assert(Set(tabs.keys) == [.running, .input, .review], "Every summary tab reports its frame")
+        let running = tabs[.running]!, input = tabs[.input]!, review = tabs[.review]!
+        assert(running.maxX <= input.minX + 0.5 && input.maxX <= review.minX + 0.5, "Tabs run left to right on screen")
+        // The tabs sit in the bar under the menu bar when floating, beside the housing when docked.
+        let barHeight = config.notch > 0 ? config.safeTop : 34
+        let bar = NSRect(x: panel.frame.minX, y: panel.frame.maxY - barHeight, width: panel.frame.width, height: barHeight)
+        for tab in [running, input, review] {
+            assert(tab.width > 20 && bar.insetBy(dx: -0.5, dy: -0.5).contains(tab), "A tab lies inside the panel's top bar on screen")
+        }
+        if config.notch > 0 {
+            let housing = NSRect(x: 756 - 105, y: bar.minY, width: config.notch, height: barHeight)
+            assert(running.maxX <= housing.minX + 0.5 && input.minX >= housing.maxX - 0.5,
+                   "Running is left of the camera housing, Input and Review right of it; nothing is drawn under it")
+            assert(HoverTabSelector<TaskSection>.tab(at: NSPoint(x: housing.midX, y: housing.midY), in: tabs) == nil)
+        }
+        assert(HoverTabSelector<TaskSection>.tab(at: NSPoint(x: running.midX, y: running.midY), in: tabs) == .running)
+        assert(HoverTabSelector<TaskSection>.tab(at: NSPoint(x: review.midX, y: review.midY), in: tabs) == .review)
+        assert(HoverTabSelector<TaskSection>.tab(at: NSPoint(x: panel.frame.midX, y: panel.frame.minY + 1), in: tabs) == nil,
+               "The panel's bottom edge is not a tab")
+        panel.contentView = nil
+    }
+    print("PASS: native tab hover geometry: compact, open and notch-attached tabs measured on screen; no window shown or cursor moved.")
 }
 
 @MainActor
@@ -1139,9 +1476,14 @@ func renderPreview(to path: String, collapsed: Bool, floating: Bool, allTasks: B
     if afterReview, let group = model.currentReviewGroup { model.markReviewed(group) }
     model.selection = running ? .running : input ? .input : allTasks ? .all : .review
     model.safeTop = floating ? 0 : 32
+    model.notchWidth = floating ? 0 : 210
+    model.notchLeading = floating ? 0 : collapsed ? PanelLayout.leftEarWidth : (440 - 210) / 2
     model.expanded = !collapsed
     let view = NSHostingView(rootView: TaskIslandView(model: model, synthetic: true, quit: {}))
-    view.frame = NSRect(x: 0, y: 0, width: collapsed ? (floating ? 216 : 320) : 440, height: (collapsed ? 34 : model.preferredPanelHeight) + model.safeTop)
+    let screen = ScreenMetrics(frame: NSRect(x: 0, y: 0, width: 1512, height: 982),
+                               visibleFrame: NSRect(x: 0, y: 38, width: 1512, height: 906), safeTop: 32, housingWidth: 210)
+    let size = PanelLayout.frame(metrics: screen, expanded: !collapsed, forceFloating: floating, expandedHeight: model.preferredPanelHeight).size
+    view.frame = NSRect(origin: .zero, size: size)
     view.layoutSubtreeIfNeeded()
     guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
         throw NSError(domain: "TaskIsland", code: 1)
@@ -1169,6 +1511,7 @@ struct TaskIslandMain {
             do {
                 runGeometryChecks()
                 runHoverTrackingChecks()
+                runHoverTabGeometryChecks()
                 try runModelSelfChecks()
                 print("PASS: native geometry, URL validation, live metadata model and durable review ledger. No GUI or live bridge started.")
             } catch {
@@ -1200,3 +1543,4 @@ struct TaskIslandMain {
         }
     }
 }
+

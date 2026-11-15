@@ -81,7 +81,17 @@ final class LiveModel: ObservableObject {
     @Published var selection: TaskSection = .review {
         didSet { if selection != oldValue { cancelNavigation() } }
     }
+    /// Where the summary tabs are laid out, in the view's global (top-left) coordinates.
+    /// Written by the view on layout and read on pointer movement for hover selection.
+    /// Deliberately not published: it changes every frame while the panel moves.
+    var tabFrames: [TaskSection: CGRect] = [:]
     @Published var safeTop: CGFloat = 0
+    /// Width of the camera housing while docked as an island beside it; 0 when floating.
+    @Published var notchWidth: CGFloat = 0
+    /// While docked: from the panel's left edge to the housing's, taken from the real
+    /// frame, so the ears stay beside the housing while the panel moves.
+    @Published var notchLeading: CGFloat = 0
+    var isIsland: Bool { safeTop > 0 && notchWidth > 0 }
     /// Set only while the panel frame is moving. Nil at rest, when `expanded` alone
     /// says whether the panel is open.
     @Published var revealMotion: RevealMotion? = nil
@@ -323,8 +333,11 @@ final class LiveModel: ObservableObject {
             Self.sessionIdentity($0.task) == group.id && canMarkReviewed($0)
         }
     }
+    /// An Open is in flight; hover must not change the selection under it.
+    private(set) var navigationPending = false
     @discardableResult func beginNavigation(_ task: LiveTask) -> Int {
         navigationGeneration += 1
+        navigationPending = true
         navigationAttemptCount += 1
         lastNavigationTaskID = task.id
         navigationFeedback = "Opening original task..."
@@ -332,6 +345,7 @@ final class LiveModel: ObservableObject {
     }
     @discardableResult func finishNavigation(success: Bool, synthetic: Bool = false, generation: Int) -> Bool {
         guard generation == navigationGeneration else { return false }
+        navigationPending = false
         if success { navigationSuccessCount += 1 }
         navigationFeedback = synthetic ? "Test: correct task found. No real session opened." : success
             ? "Original task opened. Review history is unchanged." : "Cannot open the original task. Copy its title and search in the source app."
@@ -339,6 +353,7 @@ final class LiveModel: ObservableObject {
     }
     private func cancelNavigation() {
         navigationGeneration += 1
+        navigationPending = false
         navigationFeedback = nil
     }
 

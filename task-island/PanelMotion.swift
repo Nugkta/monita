@@ -109,3 +109,47 @@ enum PanelReveal {
     /// Capsule when compact, panel corners when open.
     static func cornerRadius(_ reveal: Double) -> Double { 17 - 5 * min(1, max(0, reveal)) }
 }
+
+/// Dragging the docked island off the camera housing. A docked panel is not movable
+/// by its background, so the app moves it itself: a press that travels `threshold`
+/// points undocks it, and the floating panel then follows the pointer, which sits in
+/// the middle of its bar. Anything less is an ordinary click and passes through.
+/// Points are in screen coordinates (y up).
+struct DockedDrag: Equatable {
+    struct Point: Equatable { var x: Double; var y: Double }
+    enum Step: Equatable {
+        /// Not a drag of the docked island: deliver the event as usual.
+        case pass
+        /// Undock now; the floating panel's top centre goes here.
+        case undock(Point)
+        /// The floating panel's top centre follows to here.
+        case move(Point)
+        /// Let go: apply the drop rule (dock again, centre, or stay).
+        case drop
+    }
+    static let threshold = 6.0
+    /// From the pointer up to the floating bar's top edge: half of its 34 points.
+    static let grabHeight = 17.0
+
+    private var start: Point?
+    private(set) var isDragging = false
+
+    mutating func pressed(at point: Point, docked: Bool) -> Step {
+        start = docked ? point : nil
+        isDragging = false
+        return .pass
+    }
+    mutating func dragged(to point: Point) -> Step {
+        let anchor = Point(x: point.x, y: point.y + Self.grabHeight)
+        if isDragging { return .move(anchor) }
+        guard let start, ((point.x - start.x) * (point.x - start.x) + (point.y - start.y) * (point.y - start.y)).squareRoot() >= Self.threshold
+        else { return .pass }
+        isDragging = true
+        return .undock(anchor)
+    }
+    mutating func released() -> Step {
+        defer { start = nil; isDragging = false }
+        return isDragging ? .drop : .pass
+    }
+    mutating func cancel() { start = nil; isDragging = false }
+}
