@@ -39,7 +39,7 @@ class InstallerTests(unittest.TestCase):
         self.assertIsNone(initial['previousVersion'])
         self.assertFalse(initial['launchRequested'])
         self.assertFalse(initial['backupCreated'])
-        target = self.destination / 'Task Island.app'
+        target = self.destination / 'Monita.app'
         info = plistlib.loads((target / 'Contents/Info.plist').read_bytes())
         self.assertEqual(info['CFBundleIdentifier'], 'local.taskisland.status')
         second = self.install()
@@ -49,9 +49,40 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue(updated['backupCreated'])
         self.assertFalse(updated['launchRequested'])
         self.assertFalse(updated['stateDirectoryTouchedByInstaller'])
+        self.assertFalse(updated['replacedTaskIslandApp'])
+
+    def fake_bundle(self, name, bundle_id, version='0.2.13'):
+        contents = self.destination / name / 'Contents'
+        (contents / 'MacOS').mkdir(parents=True)
+        path = contents / 'Info.plist'
+        path.write_bytes(plistlib.dumps({'CFBundleIdentifier': bundle_id, 'CFBundleShortVersionString': version,
+                                         'CFBundleExecutable': 'TaskIsland'}))
+        return path
+
+    def test_installed_task_island_is_replaced_by_monita(self):
+        self.fake_bundle('Task Island.app', 'local.taskisland.status')
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertTrue(report['replacedTaskIslandApp'])
+        self.assertEqual(report['previousVersion'], '0.2.13')
+        self.assertTrue(report['backupCreated'])
+        self.assertFalse((self.destination / 'Task Island.app').exists(), 'The old name must not linger beside Monita')
+        self.assertTrue((self.destination / 'Monita.app/Contents/Info.plist').exists())
+        created = set(self.backups.glob('*.app')) - self.previous_backups
+        self.assertTrue(any(path.name.startswith('Task Island-0.2.13-') for path in created), created)
+
+    def test_someone_elses_task_island_is_left_alone(self):
+        path = self.fake_bundle('Task Island.app', 'org.example.unrelated', '1.0')
+        original = path.read_bytes()
+        result = self.install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(json.loads(result.stdout)['replacedTaskIslandApp'])
+        self.assertEqual(path.read_bytes(), original)
+        self.assertTrue((self.destination / 'Monita.app').exists())
 
     def test_unrelated_application_is_preserved(self):
-        contents = self.destination / 'Task Island.app/Contents'
+        contents = self.destination / 'Monita.app/Contents'
         contents.mkdir(parents=True)
         original = plistlib.dumps({'CFBundleIdentifier': 'org.example.unrelated',
                                    'CFBundleShortVersionString': '1.0'})

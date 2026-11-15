@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.14
+
+- Renamed from Task Island to **Monita**. The app is now `Monita.app` (menu:
+  Show, Hide and Quit Monita). The installer replaces an installed
+  `Task Island.app` that has Monita's bundle identifier, keeps it in
+  `task-island/backups/`, and leaves any other app of that name alone.
+- Unchanged on purpose, so nothing is lost: the bundle identifier
+  `local.taskisland.status` (which also holds settings such as docking and
+  sounds) and the `~/Library/Application Support/TaskIsland` data folder with
+  the review history.
+
 ## 0.2.13
 
 - Drag the docked island off the camera housing to undock it; it becomes the

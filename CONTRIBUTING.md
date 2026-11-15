@@ -1,6 +1,6 @@
 # Contributing
 
-Task Island is experimental. Please keep changes focused and distinguish
+Monita is experimental. Please keep changes focused and distinguish
 synthetic tests from real desktop-session validation.
 
 1. Follow the setup steps in README.md.
