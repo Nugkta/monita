@@ -1,7 +1,5 @@
 # Monita
 
-*monitor + task, with a Spanish twist: monita means "little monkey".*
-
 A compact, native macOS status bar for **Codex** and **Claude Code** tasks. Keep an eye on work while using other apps, then review finished results in one small queue.
 
 > [!IMPORTANT]
