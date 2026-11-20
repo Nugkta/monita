@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<title>Monita — Pale Yellow</title>
+<desc>Hand-written flat macOS icon based on the selected B direction. A solid pale butter-yellow background supports the unchanged slim black capsule and blue, amber, and lilac task-state symbols. No gradients, shadows, lighting effects, texture, bevels, or raster images.</desc>
+<rect id="tile" x="48" y="48" width="928" height="928" rx="208" fill="#F8EDC4"/>
+<rect id="island" x="150" y="400" width="724" height="224" rx="112" fill="#0B0D14"/>
+<g id="states" transform="translate(0 18)">
+  <path id="running" d="M300 450 Q292 445 292 455 V533 Q292 543 300 538 L359 502 Q368 496 359 490 Z" fill="#7AADFF"/>
+  <g id="input" fill="#FFC261">
+    <rect x="482" y="447" width="22" height="94" rx="8"/>
+    <rect x="522" y="447" width="22" height="94" rx="8"/>
+  </g>
+  <g id="review">
+    <path d="M659 476 L677 450 Q680 445 688 445 H719 Q727 445 730 450 L748 476 V524 Q748 537 735 537 H672 Q659 537 659 524 Z" fill="#C2B0FF"/>
+    <path d="M669 484 H688 L695 494 H712 L719 484 H738" fill="none" stroke="#0B0D14" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</g>
+</svg>

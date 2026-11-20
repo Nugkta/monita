@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.16
+
+- Added the new flat app icon: a pale-yellow background, a black floating
+  capsule, and blue Running, amber Input, and lilac Review symbols. Official
+  builds now include its full-resolution macOS icon in the app bundle.
+
 ## 0.2.15
 
 - A task that starts running again is no longer listed under both Running and

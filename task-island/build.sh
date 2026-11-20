@@ -5,6 +5,7 @@ node task-island/build.mjs
 mkdir -p /tmp/task-island-live-module-cache
 app_dir='task-island/Monita.app'
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources/licenses"
+sh task-island/make-icon.sh "$app_dir/Contents/Resources/AppIcon.icns"
 xcrun swiftc -parse-as-library -target "$(uname -m)-apple-macos13.0" \
   -module-cache-path /tmp/task-island-live-module-cache \
   -framework AppKit -framework SwiftUI -framework Combine \
