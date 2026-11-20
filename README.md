@@ -1,5 +1,7 @@
 # Monita
 
+<img src="task-island/assets/AppIcon.png" width="96" height="96" alt="Monita app icon">
+
 A compact, native macOS status bar for **Codex** and **Claude Code** tasks. Keep an eye on work while using other apps, then review finished results in one small queue.
 
 > [!IMPORTANT]
@@ -66,6 +68,11 @@ sh task-island/release.sh
 ```
 
 This runs the checks, builds `task-island/Monita.app`, and executes its self-check. It does not install or start monitoring.
+
+The editable icon source and 1024px master are in `task-island/assets/`. The
+build uses macOS `sips` and `iconutil` to create all standard icon sizes from
+`AppIcon.png`; after editing `AppIcon.svg`, export the updated 1024px PNG there
+before building.
 
 To install or update after those checks:
 

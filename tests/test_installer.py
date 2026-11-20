@@ -42,6 +42,9 @@ class InstallerTests(unittest.TestCase):
         target = self.destination / 'Monita.app'
         info = plistlib.loads((target / 'Contents/Info.plist').read_bytes())
         self.assertEqual(info['CFBundleIdentifier'], 'local.taskisland.status')
+        icon = (target / 'Contents/Resources' / info['CFBundleIconFile']).read_bytes()
+        self.assertEqual(icon[:4], b'icns')
+        self.assertEqual(int.from_bytes(icon[4:8], 'big'), len(icon))
         second = self.install()
         self.assertEqual(second.returncode, 0, second.stderr)
         updated = json.loads(second.stdout)
