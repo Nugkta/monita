@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Herdr as a third source (green). Monita follows coding-agent terminals on this
+  Mac and on every machine connected to the local herdr-core: Running, Input,
+  Review and Error follow herdr-core's own status. Monita only reads: a Herdr
+  result stays in Review until it is viewed in Herdr, its Reviewed button is
+  unavailable, and Open brings Herdr to the front (Herdr has no link to a
+  single terminal). A Claude session in a local Herdr terminal is listed once.
+
 ## 0.2.16
 
 - Added the new flat app icon: a pale-yellow background, a black floating

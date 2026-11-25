@@ -12,6 +12,7 @@ sh task-island/test-attention-events-cases.sh
 sh task-island/test-sound-effects-cases.sh
 sh task-island/test-hover-expansion-cases.sh
 sh task-island/test-panel-motion-cases.sh
+sh task-island/test-herdr-cases.sh
 sh task-island/build.sh
 "task-island/Monita.app/Contents/MacOS/Monita" --self-check
 if [ "${1:-}" = "--install" ]; then

@@ -341,7 +341,11 @@ struct TaskIslandView: View {
     @State private var hoveredSection: TaskSection?
 
     private func sourceColor(_ provider: String) -> Color {
-        provider == "codex" ? Color(red: 0.43, green: 0.67, blue: 1) : Color(red: 0.94, green: 0.57, blue: 0.36)
+        switch provider {
+        case "codex": return Color(red: 0.43, green: 0.67, blue: 1)
+        case "herdr": return Color(red: 0.45, green: 0.82, blue: 0.55)
+        default: return Color(red: 0.94, green: 0.57, blue: 0.36)
+        }
     }
     private func sourceBadge(_ provider: String) -> some View {
         HStack(spacing: 4) {
@@ -351,6 +355,7 @@ struct TaskIslandView: View {
     }
 
     private func open(_ task: LiveTask) {
+        if task.provider == "herdr" { openHerdr(task); return }
         guard let url = validatedSourceURL(task.sourceURL) else { return }
         failedOpenTask = nil
         let generation = model.beginNavigation(task)
@@ -377,7 +382,31 @@ struct TaskIslandView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(task.title, forType: .string)
     }
-    private func providerName(_ text: String) -> String { text == "codex" ? "Codex" : "Claude" }
+    /// Herdr desktop has no link to a terminal: bring the app forward (launching it if needed).
+    private func openHerdr(_ task: LiveTask) {
+        failedOpenTask = nil
+        let generation = model.beginNavigation(task)
+        if synthetic { model.finishNavigation(success: true, synthetic: true, generation: generation); return }
+        guard let applicationURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "dev.herdr.app") else {
+            model.finishNavigation(success: false, generation: generation); failedOpenTask = task; return
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: applicationURL, configuration: configuration) { _, error in
+            DispatchQueue.main.async {
+                let accepted = model.finishNavigation(success: error == nil, generation: generation)
+                if accepted && error != nil { failedOpenTask = task }
+                if accepted && error == nil { model.expanded = false }
+            }
+        }
+    }
+    private func providerName(_ text: String) -> String {
+        switch text {
+        case "codex": return "Codex"
+        case "herdr": return "Herdr"
+        default: return "Claude"
+        }
+    }
     private func cacheCaption(_ task: LiveTask) -> String {
         let age = model.observationAgeSeconds(task)
         guard age >= 0 else { return "Cache · observation time unknown" }
@@ -581,7 +610,9 @@ struct TaskIslandView: View {
                                     if group.items.count > 1 {
                                         Text("\(group.items.count) updates").font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.45))
                                     }
-                                    if !model.canMarkReviewed(group) {
+                                    if group.task.provider == "herdr" {
+                                        Text("Clears when viewed in Herdr").font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.45))
+                                    } else if !model.canMarkReviewed(group) {
                                         Text("Unconfirmed result").font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.45))
                                     } else if group.task.completionTracking == "observed-change" {
                                         Text("Inferred completion").font(.system(size: 10)).foregroundStyle(Color.white.opacity(0.45))
@@ -592,7 +623,7 @@ struct TaskIslandView: View {
                                 Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .medium))
                                     .frame(width: 28, height: 28).contentShape(Rectangle())
                             }.buttonStyle(.plain).foregroundStyle(Color.white.opacity(0.7))
-                                .disabled(validatedSourceURL(group.task.sourceURL) == nil)
+                                .disabled(!LiveModel.canOpen(group.task))
                                 .accessibilityLabel("Open task: \(group.task.title)")
                                 .help("Open in \(providerName(group.task.provider))")
                             Button { model.markReviewed(group) } label: {
@@ -601,7 +632,7 @@ struct TaskIslandView: View {
                                     .background(Color.white.opacity(0.075), in: RoundedRectangle(cornerRadius: 5))
                             }.buttonStyle(.plain).disabled(!model.canMarkReviewed(group))
                                 .accessibilityLabel("Mark reviewed: \(group.task.title)")
-                                .help("Mark reviewed")
+                                .help(group.task.provider == "herdr" ? "Clears when viewed in Herdr" : "Mark reviewed")
                         }.padding(.vertical, 8)
                             .contextMenu { Button("Copy task title") { copyTitle(group.task) } }
                         if group.id != model.pendingReviewGroups.last?.id {
@@ -678,7 +709,7 @@ struct TaskIslandView: View {
                 Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .medium))
                     .frame(width: 28, height: 28).contentShape(Rectangle())
             }.buttonStyle(.plain).foregroundStyle(Color.white.opacity(0.65))
-                .disabled(validatedSourceURL(task.sourceURL) == nil)
+                .disabled(!LiveModel.canOpen(task))
                 .accessibilityLabel("Open task: \(task.title)").help("Open in \(providerName(task.provider))")
         }
     }
@@ -699,7 +730,7 @@ struct TaskIslandView: View {
                 Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .medium))
                     .frame(width: 28, height: 28).contentShape(Rectangle())
             }.buttonStyle(.plain).foregroundStyle(Color.white.opacity(0.7))
-                .disabled(validatedSourceURL(task.sourceURL) == nil)
+                .disabled(!LiveModel.canOpen(task))
                 .accessibilityLabel("Open task: \(task.title)").help("Open in \(providerName(task.provider))")
         }.padding(.vertical, 5)
     }

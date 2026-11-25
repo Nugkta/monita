@@ -2,7 +2,7 @@ import Foundation
 import Combine
 
 enum TaskSection: String, CaseIterable { case running = "Running", input = "Input", review = "Review", all = "All" }
-enum TaskProvider: String, CaseIterable { case codex, claude }
+enum TaskProvider: String, CaseIterable { case codex, claude, herdr }
 enum LiveState: String, Codable { case running, input, review, read, idle, error, unknown }
 enum AttentionEvent { case completed, input }
 
@@ -167,7 +167,7 @@ final class LiveModel: ObservableObject {
         return scope([task.provider, task.id, key])
     }
     private static func validTask(_ task: LiveTask) -> Bool {
-        ["codex", "claude"].contains(task.provider) && !task.id.isEmpty && task.id.count <= 1024 &&
+        ["codex", "claude", "herdr"].contains(task.provider) && !task.id.isEmpty && task.id.count <= 1024 &&
         task.title.count <= 500 && (task.resultKey?.count ?? 0) <= 2048 && validResultKey(task.resultKey) &&
         (task.sourceURL?.count ?? 0) <= 4096 &&
         ["live", "history", "unavailable"].contains(task.evidence) &&
@@ -179,7 +179,14 @@ final class LiveModel: ObservableObject {
             (task.completionTracking == observedChange && task.provider == "claude" && task.observationSource == "claude-cache" &&
                 task.state == .idle && (task.resultKey?.hasPrefix(observedKeyPrefix) ?? false))) &&
         (task.observationSource == nil || (task.observationSource == "claude-cache" && task.provider == "claude" &&
-            [.running, .input, .idle, .error, .unknown].contains(task.state)))
+            [.running, .input, .idle, .error, .unknown].contains(task.state))) &&
+        // Herdr's unread marker is its own; Monita holds no result identity or link for it.
+        (task.provider != "herdr" || (task.resultKey == nil && task.sourceURL == nil &&
+            task.completionTracking == nil && task.observationSource == nil))
+    }
+    /// Herdr desktop has no link scheme: Open brings the app forward without a URL.
+    static func canOpen(_ task: LiveTask) -> Bool {
+        task.provider == "herdr" || validatedSourceURL(task.sourceURL) != nil
     }
     private static func validResultKey(_ key: String?) -> Bool {
         guard let key else { return true }
@@ -373,8 +380,8 @@ final class LiveModel: ObservableObject {
         self.nowMs = nowMs
         guard snapshot.type == "snapshot", snapshot.version == 1, snapshot.generatedAt.isFinite,
               abs(nowMs - snapshot.generatedAt) <= 5_000, snapshot.tasks.count <= 20_000,
-              snapshot.providers.count <= 2, Set(snapshot.providers.map(\.id)).count == snapshot.providers.count,
-              snapshot.providers.allSatisfy({ ["codex", "claude"].contains($0.id) &&
+              snapshot.providers.count <= 3, Set(snapshot.providers.map(\.id)).count == snapshot.providers.count,
+              snapshot.providers.allSatisfy({ ["codex", "claude", "herdr"].contains($0.id) &&
                   ["connecting", "live", "degraded", "offline"].contains($0.health) }),
               snapshot.tasks.allSatisfy(Self.validTask),
               // Inferred endings are minted from this app's own observations only.
@@ -488,6 +495,9 @@ final class LiveModel: ObservableObject {
                       task.observationSource != "claude-cache" || task.observedAt > previous.observedAt
                 else { continue }
                 if state == .input && previous.state != .input { input = true }
+                // Herdr results have no identity in the review ledger; its own state edge is the completion.
+                if task.provider == "herdr" && [.review, .error].contains(state) &&
+                    ![.review, .error].contains(previous.state) { completed = true }
             }
             attentionStates[sessionID] = (state, task.observedAt)
         }
