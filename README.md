@@ -2,7 +2,7 @@
 
 <img src="task-island/assets/AppIcon.png" width="96" height="96" alt="Monita app icon">
 
-A compact, native macOS status bar for **Codex** and **Claude Code** tasks. Keep an eye on work while using other apps, then review finished results in one small queue.
+A compact, native macOS status bar for **Codex** and **Claude Code** tasks, and for coding agents running in **Herdr**. Keep an eye on work while using other apps, then review finished results in one small queue.
 
 > [!IMPORTANT]
 > **Codex and Claude Code only, not chat.** Monita follows coding tasks in the Codex desktop app and in Claude Code. It does not follow Claude chat conversations (claude.ai or the Claude app's Chat tab), Cowork, or ChatGPT chats, and there are no plans to add them.
@@ -35,6 +35,7 @@ Monita is an independent, experimental project. It uses local app data and priva
 | --- | --- | --- |
 | Codex desktop | Local task catalog, live states for loaded desktop sessions, input requests, and stable completed-result identities | Does not enumerate every host's live tasks. Uses a private observer protocol. |
 | Claude Code desktop records | Local runtime registry when present; persisted successful-turn and error identities independent of runtime | Remote/SSH tasks may have completion records without locally observable running/input state. Real-session coverage depends on the desktop version. |
+| Herdr (herdr-core) | Live status of coding-agent terminals on this Mac and on every machine connected to the local herdr-core; Herdr desktop's own "seen" marker decides what needs review | Read-only: a Herdr task leaves Review only when viewed in Herdr, and Open brings Herdr forward without selecting the terminal. Needs `~/.local/bin/herdr-core` (or `MONITA_HERDR_CORE`). A Claude session in a local Herdr terminal is listed once, as Herdr. |
 | Claude Remote Control list cache | Timestamped running/input/idle observations; inferred endings when an explicitly active observation is followed by a newer idle observation | Not a continuous live feed. Inferred endings are labeled separately and do not claim a successful upstream turn. |
 
 Claude chat, Cowork, and ChatGPT chat are not supported; only Codex and Claude Code tasks are. The app does not install hooks or configure remote hosts. A task existing only in a stale remote list cannot be made live by refreshing Monita's own heartbeat.
@@ -102,6 +103,7 @@ sh task-island/test-attention-events-cases.sh
 sh task-island/test-sound-effects-cases.sh
 sh task-island/test-hover-expansion-cases.sh
 sh task-island/test-panel-motion-cases.sh
+sh task-island/test-herdr-cases.sh
 ```
 
 The tests use synthetic records and temporary resources. Some IPC tests need permission to create local Unix sockets. A model or layout test passing does not establish that a particular real Claude remote session has a working live feed.

@@ -1,4 +1,4 @@
-export type ProviderId = 'codex' | 'claude';
+export type ProviderId = 'codex' | 'claude' | 'herdr';
 export type SessionStatus = 'review' | 'running' | 'read' | 'unknown';
 export type QueueSection = SessionStatus | 'snoozed';
 
