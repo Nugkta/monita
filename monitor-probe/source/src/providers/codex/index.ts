@@ -13,6 +13,7 @@ import { CodexTransport, validHostId, type CodexThreadRef } from './transport';
 import { LineageReader } from '../lineage';
 import { readCodexResponse } from './response';
 import { defaultHooksDirectory, readHookRecords, sessionFromHooks, type HookRecord } from './hooks';
+import { readCodexHistory } from './history';
 import {
   projectConversation,
   patchProjection,
@@ -45,6 +46,7 @@ export class CodexProvider implements SessionProvider {
   private resyncTimes = new Map<string, number>();
   private protocolError: string | null = null;
   private hookRecords = new Map<string, HookRecord>();
+  private historyObserved = new Set<string>();
   private startedAt = Date.now();
   private terminalProcesses: Map<number, TerminalProcess> | null = new Map();
   private terminalOwners = new Map<number, string>();
@@ -74,19 +76,10 @@ export class CodexProvider implements SessionProvider {
     });
     this.transport.on('offline', (message: string) => {
       this.connected = false;
+      const disconnected = [...this.live.keys()];
       this.live.clear();
-      for (const [id, s] of this.sessions)
-        this.sessions.set(
-          id,
-          this.withHooks({
-            ...s,
-            status: 'unknown',
-            evidence: 'unavailable',
-            attentionKey: null,
-            awaitingInput: false,
-            detail: 'Codex desktop disconnected; last known state is not current',
-          }),
-        );
+      for (const id of disconnected)
+        this.markUnavailable(id, 'Codex desktop disconnected; last known state is not current');
       this.publish();
       this.reportHealth(message);
     });
@@ -125,12 +118,12 @@ export class CodexProvider implements SessionProvider {
       isAgentProcess(process.command, 'codex') &&
       sameTerminal(terminal, process) &&
       this.terminalOwners.get(terminal.pid) === session.externalId;
-    const desktopBusy =
-      projection &&
+    const desktopBusy = session.status === 'running' ||
+      (projection &&
       (projection.threadRuntimeStatus?.type === 'active' ||
         projection.requests?.length ||
         projection.threadRuntimeStatus?.activeFlags?.length ||
-        latestTurn(projection)?.status === 'inProgress');
+        latestTurn(projection)?.status === 'inProgress'));
     session = {
       ...session,
       resumeId: terminal ? session.externalId : null,
@@ -178,9 +171,10 @@ export class CodexProvider implements SessionProvider {
         `Connected to Codex desktop · ${known}/${this.sessions.size} statuses observed · local catalog and loaded desktop sessions only${hasHooks ? ' · companion observations available' : ''}`,
       );
     } else {
+      const hasHistory = this.historyObserved.size > 0;
       this.health(
-        this.connected || hasHooks ? 'degraded' : 'offline',
-        `${this.protocolError || offlineMessage}${hasHooks ? ' · using companion observations; read receipts unavailable' : ''}`,
+        this.connected || hasHooks || hasHistory ? 'degraded' : 'offline',
+        `${this.protocolError || offlineMessage}${hasHistory ? ' · using local turn history' : ''}${hasHooks ? ' · using companion observations' : ''}`,
       );
     }
   }
@@ -207,20 +201,34 @@ export class CodexProvider implements SessionProvider {
         if (record.terminal) this.terminalOwners.set(record.terminal.pid, id);
       }
       const rows = readCatalog(this.home, this.tracked, this.lineage);
+      const history = await readCodexHistory(
+        this.home,
+        rows.filter(row => !row.archived && !this.live.has(row.externalId) &&
+          !this.hostCollisions.has(row.externalId)).map(row => row.externalId),
+      );
+      const previousHistory = this.historyObserved;
+      this.historyObserved = new Set();
       this.catalogCurrent = true;
       for (const row of rows) {
+        previousHistory.delete(row.externalId);
         if (!this.acceptHost(row.externalId, 'local')) continue;
         row.hostId = 'local';
         const live = this.live.get(row.externalId);
+        const observed = live ? undefined : history.get(row.externalId);
+        if (observed) this.historyObserved.add(row.externalId);
         this.sessions.set(
           row.externalId,
-          this.withHooks(live ? sessionFromProjection(row, live.state) : row, live?.state),
+          this.withHooks(live ? sessionFromProjection(row, live.state) : { ...row, ...observed }, live?.state),
         );
       }
+      for (const id of previousHistory) this.sessions.delete(id);
       this.publish();
       this.reportHealth();
     } catch (error) {
       this.catalogCurrent = false;
+      for (const id of this.historyObserved)
+        this.markUnavailable(id, 'Codex local turn history is unavailable');
+      this.historyObserved.clear();
       for (const [id, session] of this.sessions)
         this.sessions.set(id, { ...session, terminalResumeAllowed: false });
       this.publish();
@@ -284,6 +292,10 @@ export class CodexProvider implements SessionProvider {
   }
   private invalidate(id: string, message: string) {
     this.live.delete(id);
+    this.markUnavailable(id, message);
+    this.publish();
+  }
+  private markUnavailable(id: string, message: string) {
     const session = this.sessions.get(id);
     if (session) {
       this.sessions.set(
@@ -293,11 +305,11 @@ export class CodexProvider implements SessionProvider {
           status: 'unknown',
           evidence: 'unavailable',
           attentionKey: null,
+          activityAt: undefined,
           awaitingInput: false,
           detail: message,
         }),
       );
-      this.publish();
     }
   }
   private requestResync(id: string) {
@@ -413,6 +425,7 @@ export class CodexProvider implements SessionProvider {
   private publishLive(id: string, live: { state: Projection }) {
     const base = this.sessions.get(id);
     if (!base) return;
+    this.historyObserved.delete(id);
     this.lastObservedAt = Date.now();
     this.sessions.set(
       id,
