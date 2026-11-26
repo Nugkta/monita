@@ -5,13 +5,13 @@
 A compact, native macOS status bar for **Codex** and **Claude Code** tasks, and for coding agents running in **Herdr**. Keep an eye on work while using other apps, then review finished results in one small queue.
 
 > [!IMPORTANT]
-> **Codex and Claude Code only, not chat.** Monita follows coding tasks in the Codex desktop app and in Claude Code. It does not follow Claude chat conversations (claude.ai or the Claude app's Chat tab), Cowork, or ChatGPT chats, and there are no plans to add them.
+> **Coding-agent tasks only, not chat.** Monita follows coding tasks in the Codex desktop app, in Claude Code, and in terminals managed by Herdr. It does not follow Claude chat conversations (claude.ai or the Claude app's Chat tab), Cowork, or ChatGPT chats, and there are no plans to add them.
 
 <img src="docs/assets/demo.gif" alt="Animated demo with built-in sample tasks: hovering opens the panel and switches between Running, Input, and Review; dragging it into the menu bar docks it beside the notch, where the ears are the tabs" width="600">
 
 <sub>Demo built from the app's synthetic previews (sample tasks, no real data) by <code>docs/make-demo.py</code>.</sub>
 
-Monita is an independent, experimental project. It uses local app data and private desktop protocols, so coverage can change when Codex or Claude updates.
+Monita is an independent, experimental project. It uses local app data, private desktop protocols, and herdr-core's command-line output, so coverage can change when Codex, Claude, or Herdr updates.
 
 <details>
 <summary><b>Features</b></summary>
@@ -20,8 +20,9 @@ Monita is an independent, experimental project. It uses local app data and priva
 - Hover to expand; move away to collapse. Resting on Running, Input, or Review for a moment switches to it; a click still works.
 - Drag the floating panel anywhere; it keeps its top centre as it opens and closes, and centres itself when dropped near the middle of the screen.
 - On a Mac with a camera housing (notch), push the panel up into the menu bar over the housing to dock it as an island: Running to the left of the housing, Input and Review to the right, no taller than the menu bar. Drag it off to undock.
-- One compact task list: Codex in blue, Claude in orange, with Open and Reviewed actions.
+- One compact task list: Codex in blue, Claude in orange, Herdr in green, with Open and Reviewed actions.
 - A durable, task-grouped review queue. Opening a task does not mark it reviewed. Confirming a row acknowledges only the results captured by that action; later results remain pending.
+- Herdr tasks are read-only. Open brings Herdr to the front, and a result leaves Review when it is viewed in Herdr; its Reviewed button is unavailable.
 - Quiet, distinct completion and input sounds, with a persistent Sound Effects switch.
 - Spring expansion motion that preserves its top edge and respects Reduce Motion.
 - Last-observed activity is distinguished from confirmed live activity. A hollow running marker means an observation is awaiting sync, not that the app has verified the task is currently running.
@@ -38,7 +39,7 @@ Monita is an independent, experimental project. It uses local app data and priva
 | Herdr (herdr-core) | Live status of coding-agent terminals on this Mac and on every machine connected to the local herdr-core; Herdr desktop's own "seen" marker decides what needs review | Read-only: a Herdr task leaves Review only when viewed in Herdr, and Open brings Herdr forward without selecting the terminal. Needs `~/.local/bin/herdr-core` (or `MONITA_HERDR_CORE`). A Claude session in a local Herdr terminal is listed once, as Herdr. |
 | Claude Remote Control list cache | Timestamped running/input/idle observations; inferred endings when an explicitly active observation is followed by a newer idle observation | Not a continuous live feed. Inferred endings are labeled separately and do not claim a successful upstream turn. |
 
-Claude chat, Cowork, and ChatGPT chat are not supported; only Codex and Claude Code tasks are. The app does not install hooks or configure remote hosts. A task existing only in a stale remote list cannot be made live by refreshing Monita's own heartbeat.
+Claude chat, Cowork, and ChatGPT chat are not supported; only Codex, Claude Code, and Herdr coding tasks are. Herdr is optional: when herdr-core is missing or not running, the Herdr source is offline and Codex and Claude are unaffected. The app does not install hooks or configure remote hosts. A task existing only in a stale remote list cannot be made live by refreshing Monita's own heartbeat.
 
 </details>
 
@@ -49,6 +50,7 @@ Claude chat, Cowork, and ChatGPT chat are not supported; only Codex and Claude C
 - Apple Command Line Tools (`xcode-select --install`).
 - Node.js 22.19 or later in the Node 22 line (tested baseline).
 - Python 3 for the optional installer.
+- Optional, for the Herdr source: Herdr with `herdr-core` at `~/.local/bin/herdr-core`, or its path in `MONITA_HERDR_CORE`.
 
 The build targets the host Mac's architecture. The resulting app bundles Node so end users do not need a separate runtime. Builds use a local ad hoc signature and are not notarized.
 
@@ -132,6 +134,8 @@ Monita does not call a model, generate summaries, send prompts, answer approvals
 
 The underlying Codex IPC can send a full snapshot into memory before projection. The Claude cache reader temporarily copies and decodes the selected local cache before filtering it; this can include unrelated cached content in memory. Only allowlisted session metadata leaves the parser. Temporary copies are private and removed after reading. Unsupported formats fail closed.
 
+The Herdr observer only reads. It runs `herdr-core events --json` and `herdr-core ls --json` and nothing else, and only while herdr-core's socket already accepts a connection, so it never starts a core that is stopped.
+
 Own review state is saved with private permissions and atomic replacement under:
 
 ```text
@@ -159,6 +163,6 @@ monitor-probe/     Adapted local source observers and pinned JavaScript dependen
 
 MIT. The local observer adapters derive from [Monitor](https://github.com/JustinTervala/monitor), copyright 2026 Justin Tervala, pinned originally at `69b148a3b31350a6bb3546d3dabddf659d891e3b`. Its copyright and MIT permission notice are preserved in `monitor-probe/source/LICENSE`.
 
-The app bundles Node.js and Immer with their applicable license notices. See `THIRD_PARTY_NOTICES.md` for the shipped components. This project is not affiliated with OpenAI or Anthropic.
+The app bundles Node.js and Immer with their applicable license notices. See `THIRD_PARTY_NOTICES.md` for the shipped components. This project is not affiliated with OpenAI, Anthropic, or Herdr.
 
 </details>
