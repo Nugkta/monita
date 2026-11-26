@@ -1,5 +1,7 @@
 import { CodexProvider } from '../monitor-probe/source/src/providers/codex/index';
 import { ClaudeProvider, claudeDesktopRunning } from '../monitor-probe/source/src/providers/claude/index';
+import { HerdrProvider } from '../monitor-probe/source/src/providers/herdr/index';
+import type { SessionProvider } from '../monitor-probe/source/src/providers/provider';
 import { BridgeState, parseBridgeOptions } from './bridge-core';
 import { readClaudeCache } from './claude-cache';
 
@@ -21,8 +23,8 @@ const desktopRunning = () => {
     desktopSeen = { at: now, value: claudeDesktopRunning() };
   return desktopSeen.value;
 };
-const providers = [new CodexProvider(), new ClaudeProvider({ pollMs: 1_000, desktopRunning })];
-const state = new BridgeState();
+const providers: SessionProvider[] = [new CodexProvider(), new ClaudeProvider({ pollMs: 1_000, desktopRunning }), new HerdrProvider()];
+const state = new BridgeState(['codex', 'claude', 'herdr']);
 let stopping = false;
 let heartbeat: NodeJS.Timeout | undefined;
 let duration: NodeJS.Timeout | undefined;

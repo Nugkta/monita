@@ -1,5 +1,6 @@
 import type { ProviderId, ProviderHealth, Session } from '../monitor-probe/source/src/shared/types';
 import type { ClaudeCacheSnapshot } from './claude-cache';
+import { herdrAddress } from '../monitor-probe/source/src/providers/herdr/projection';
 
 export type BridgeStateName = 'running' | 'input' | 'idle' | 'review' | 'read' | 'error' | 'unknown';
 export type BridgeHealth = 'connecting' | 'live' | 'degraded' | 'offline';
@@ -40,11 +41,13 @@ const healthNames = new Set<BridgeHealth>(['connecting', 'live', 'degraded', 'of
 
 export function validExternalID(provider: ProviderId, value: unknown): value is string {
   return typeof value === 'string' && (provider === 'codex' ? codexID.test(value)
+    : provider === 'herdr' ? herdrAddress.test(value)
     : claudeID.test(value) || claudeCLI.test(value) || claudeRemoteID.test(value));
 }
 
 export function sourceURL(provider: ProviderId, externalID: unknown, hostId?: string): string | null {
-  if (!validExternalID(provider, externalID)) return null;
+  // Herdr desktop has no link scheme: Open only brings the app forward.
+  if (provider === 'herdr' || !validExternalID(provider, externalID)) return null;
   if (provider === 'codex') {
     if (hostId !== undefined && !hostID.test(hostId)) return null;
     return `codex://threads/${encodeURIComponent(externalID)}` +
@@ -58,16 +61,18 @@ export function sourceURL(provider: ProviderId, externalID: unknown, hostId?: st
 const boundedTime = (value: unknown, now: number) =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= now + 60_000
     ? Math.floor(value) : 0;
+const fallbackTitle = (provider: ProviderId) =>
+  provider === 'codex' ? 'Codex task' : provider === 'herdr' ? 'Herdr task' : 'Claude task';
 const safeTitle = (value: unknown, provider: ProviderId) => {
-  if (typeof value !== 'string') return provider === 'codex' ? 'Codex task' : 'Claude task';
+  if (typeof value !== 'string') return fallbackTitle(provider);
   const clean = value.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, ' ').trim();
   const title = Array.from(clean).slice(0, 500).join('');
-  return title || (provider === 'codex' ? 'Codex task' : 'Claude task');
+  return title || fallbackTitle(provider);
 };
 
 /** Whitelist UI navigation/status metadata. Never serialize the source Session. */
 export function toBridgeTask(session: Session, health: BridgeHealth, now = Date.now()): BridgeTask | null {
-  if (!session || session.archived || !['codex', 'claude'].includes(session.provider) ||
+  if (!session || session.archived || !['codex', 'claude', 'herdr'].includes(session.provider) ||
       !validExternalID(session.provider, session.externalId)) return null;
   let evidence: BridgeTask['evidence'] = ['live', 'history', 'unavailable'].includes(session.evidence)
     ? session.evidence : 'unavailable';
@@ -80,7 +85,7 @@ export function toBridgeTask(session: Session, health: BridgeHealth, now = Date.
     else if (session.status === 'review') state = session.attentionKey?.startsWith('error:') ||
       /\b(?:error|failed|interrupted)\b/i.test(session.detail) ? 'error' : 'review';
   }
-  const liveKey = ['review', 'read', 'error'].includes(state) &&
+  const liveKey = session.provider !== 'herdr' && ['review', 'read', 'error'].includes(state) &&
     typeof session.attentionKey === 'string' && resultID.test(session.attentionKey)
     ? session.attentionKey : null;
   // Completion identity is independent of runtime evidence: the task's own turn
@@ -137,9 +142,18 @@ export class BridgeState {
   snapshot(now = Date.now()): BridgeSnapshot {
     const tasks: BridgeTask[] = [];
     const providers: BridgeSnapshot['providers'] = [];
+    // A Claude CLI running in a local Herdr terminal is listed once, as the Herdr task.
+    // Until herdr has answered, any CLI task with a live process may be one of its
+    // terminals: holding it back keeps a duplicate out of the persisted review queue.
+    const herdrPending = this.records.get('herdr')?.health === 'connecting';
+    const inHerdr = new Set((this.records.get('herdr')?.sessions ?? [])
+      .filter(s => !s.externalId.includes('/') && typeof s.terminalPid === 'number')
+      .map(s => s.terminalPid));
     for (const [id, record] of this.records) {
       providers.push({ id, health: record.health });
       for (const session of record.sessions) {
+        if (id === 'claude' && typeof session.terminalPid === 'number' &&
+            (herdrPending || inHerdr.has(session.terminalPid))) continue;
         const task = toBridgeTask(session, record.health, now);
         if (task) tasks.push(task);
       }
