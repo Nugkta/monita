@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Docked island: Running and Input now sit left of the notch and Review alone
+  on the right, so the island takes less room among the menu-bar status icons
+  (ears 88 points left, 52 right).
 - Restore Running and published results for local Codex tasks when the desktop
   observer is offline.
 - Herdr as a third source (green). Monita follows coding-agent terminals on this

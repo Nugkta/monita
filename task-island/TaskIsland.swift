@@ -202,9 +202,10 @@ struct ScreenMetrics {
 
 enum PanelLayout {
     /// Island layout: the tabs sit in ears beside the camera housing, at its height.
-    /// Running alone on the left, Input and Review on the right.
-    static let leftEarWidth: CGFloat = 52
-    static let rightEarWidth: CGFloat = 88
+    /// Running and Input on the left, Review alone on the right, so the island takes
+    /// little room among the menu-bar status icons that grow toward the housing.
+    static let leftEarWidth: CGFloat = 88
+    static let rightEarWidth: CGFloat = 52
     /// Height of the tab bar above the task list. In the island the ears hold the tabs instead.
     static func barHeight(island: Bool) -> CGFloat { island ? 0 : 34 }
 
@@ -495,14 +496,16 @@ struct TaskIslandView: View {
         }.padding(.horizontal, 8)
     }
 
-    /// Docked: Running in the ear left of the camera housing, Input and Review in the
+    /// Docked: Running and Input in the ear left of the camera housing, Review in the
     /// ear to its right. The housing itself stays empty inside the same black shape.
     /// Icons and counts only; the open panel's header names the selected tab.
     private var islandStrip: some View {
         HStack(spacing: 0) {
-            countButton(.running, label: "Running", color: LiveState.running.color, symbol: "play.fill", labels: 0, emphasis: model.reveal)
-                .padding(.leading, 6).frame(width: max(0, model.notchLeading))
-                // A badge, not a sibling: the narrow ear keeps its whole width for the count.
+            HStack(spacing: 2) {
+                countButton(.running, label: "Running", color: LiveState.running.color, symbol: "play.fill", labels: 0, emphasis: model.reveal)
+                countButton(.input, label: "Input", color: LiveState.input.color, symbol: "pause.fill", labels: 0, emphasis: model.reveal)
+            }.padding(.leading, 6).frame(width: max(0, model.notchLeading))
+                // A badge, not a sibling: the ear keeps its whole width for the two counts.
                 .overlay(alignment: .topLeading) {
                     if model.isStale {
                         Image(systemName: "exclamationmark.circle.fill").font(.system(size: 8, weight: .semibold))
@@ -511,10 +514,8 @@ struct TaskIslandView: View {
                     }
                 }
             Color.clear.frame(width: model.notchWidth).accessibilityHidden(true)
-            HStack(spacing: 2) {
-                countButton(.input, label: "Input", color: LiveState.input.color, symbol: "pause.fill", labels: 0, emphasis: model.reveal)
-                countButton(.review, label: "Review", color: LiveState.review.color, symbol: "tray.full.fill", labels: 0, emphasis: model.reveal)
-            }.padding(.trailing, 6).frame(maxWidth: .infinity)
+            countButton(.review, label: "Review", color: LiveState.review.color, symbol: "tray.full.fill", labels: 0, emphasis: model.reveal)
+                .padding(.trailing, 6).frame(maxWidth: .infinity)
         }
     }
 
@@ -1289,21 +1290,21 @@ func runGeometryChecks() {
     assert(floatingCollapsed.midX == metrics.visibleFrame.midX && floatingExpanded.midX == floatingCollapsed.midX,
            "Default floating placement stays centered as it expands")
     assert(floatingCollapsed.maxY == metrics.visibleFrame.maxY - 12 && floatingExpanded.maxY == floatingCollapsed.maxY)
-    // Island: only the menu-bar strip when compact, a 52pt ear left of the housing for
-    // Running and an 88pt ear right of it for Input and Review.
+    // Island: only the menu-bar strip when compact, an 88pt ear left of the housing for
+    // Running and Input and a 52pt ear right of it for Review, clear of the status icons.
     let island = PanelLayout.frame(metrics: metrics, expanded: false, forceFloating: false)
-    assert(island.size == NSSize(width: 52 + 210 + 88, height: metrics.safeTop) && island.minX == 756 - 105 - 52,
-           "The compact island is the housing plus a narrow left ear and a wider right ear, no taller than the menu bar")
+    assert(island.size == NSSize(width: 88 + 210 + 52, height: metrics.safeTop) && island.minX == 756 - 105 - 88,
+           "The compact island is the housing plus a wider left ear and a narrow right ear, no taller than the menu bar")
     let islandOpen = PanelLayout.frame(metrics: metrics, expanded: true, forceFloating: false)
     assert(islandOpen.size == NSSize(width: 440, height: metrics.safeTop + 272 - 34) && islandOpen.midX == 756,
            "Open, the list hangs centred under the housing; no separate tab bar")
     let offCentre = ScreenMetrics(frame: metrics.frame, visibleFrame: metrics.visibleFrame, safeTop: 32, housingWidth: 200, housingMidX: 760)
-    assert(PanelLayout.frame(metrics: offCentre, expanded: false, forceFloating: false).minX == 760 - 100 - 52 &&
+    assert(PanelLayout.frame(metrics: offCentre, expanded: false, forceFloating: false).minX == 760 - 100 - 88 &&
            PanelLayout.frame(metrics: offCentre, expanded: true, forceFloating: false).midX == 760,
            "The island follows the housing itself, not the screen centre")
     for expanded in [false, true] {
         let attached = PanelLayout.frame(metrics: metrics, expanded: expanded, forceFloating: false)
-        assert(attached.maxY == metrics.frame.maxY && attached.minX <= 756 - 105 - 52 && attached.maxX >= 756 + 105 + 88)
+        assert(attached.maxY == metrics.frame.maxY && attached.minX <= 756 - 105 - 88 && attached.maxX >= 756 + 105 + 52)
         assert(attached.height >= metrics.safeTop)
         for value in [metrics, other, small] {
             let centered = PanelLayout.frame(metrics: value, expanded: expanded, forceFloating: true)
@@ -1326,12 +1327,12 @@ func runGeometryChecks() {
         PanelLayout.drop(frame: NSRect(x: midX - width / 2, y: top - 34, width: width, height: 34), metrics: screen)
     }
     assert(dropped(midX: 756, top: underBar + 10) == .dock, "Pushed into the menu bar over the housing, it docks")
-    assert(dropped(midX: 756 + 105 + 88, top: underBar) == .dock, "An ear's width beside the housing still docks")
-    assert(dropped(midX: 756 - 105 - 52, top: underBar) == .dock, "The left reach is the narrower left ear")
-    assert(dropped(midX: 756 - 105 - 53, top: underBar) == .float(NSPoint(x: 756 - 105 - 53, y: underBar)),
+    assert(dropped(midX: 756 + 105 + 52, top: underBar) == .dock, "An ear's width beside the housing still docks")
+    assert(dropped(midX: 756 - 105 - 88, top: underBar) == .dock, "The left reach is the wider left ear")
+    assert(dropped(midX: 756 - 105 - 89, top: underBar) == .float(NSPoint(x: 756 - 105 - 89, y: underBar)),
            "Beyond the left ear it stays where it is")
-    assert(dropped(midX: 756 + 105 + 89, top: underBar) == .float(NSPoint(x: 756 + 105 + 89, y: underBar)),
-           "Further along the menu bar it stays where it is")
+    assert(dropped(midX: 756 + 105 + 53, top: underBar) == .float(NSPoint(x: 756 + 105 + 53, y: underBar)),
+           "Further along the menu bar, past the narrow right ear, it stays where it is")
     assert(dropped(midX: 756, top: underBar - 12) == .float(NSPoint(x: 756, y: underBar - 12)),
            "The default spot under the menu bar does not dock")
     assert(dropped(midX: 770, top: 600) == .float(NSPoint(x: 756, y: 600)), "Within 24pt of the centre line it centres")
@@ -1416,7 +1417,7 @@ func runHoverTabGeometryChecks() {
     let configurations: [(expanded: Bool, safeTop: CGFloat, notch: CGFloat, leading: CGFloat, frame: NSRect)] = [
         (false, 0, 0, 0, NSRect(x: 200, y: 300, width: 216, height: 34)),
         (true, 0, 0, 0, NSRect(x: 88, y: 300, width: 440, height: 272)),
-        (false, 32, 210, 52, NSRect(x: 599, y: 950, width: 350, height: 32)),
+        (false, 32, 210, PanelLayout.leftEarWidth, NSRect(x: 756 - 105 - PanelLayout.leftEarWidth, y: 950, width: 350, height: 32)),
         (true, 32, 210, 115, NSRect(x: 536, y: 712, width: 440, height: 270)),
     ]
     for config in configurations {
@@ -1445,8 +1446,8 @@ func runHoverTabGeometryChecks() {
         }
         if config.notch > 0 {
             let housing = NSRect(x: 756 - 105, y: bar.minY, width: config.notch, height: barHeight)
-            assert(running.maxX <= housing.minX + 0.5 && input.minX >= housing.maxX - 0.5,
-                   "Running is left of the camera housing, Input and Review right of it; nothing is drawn under it")
+            assert(input.maxX <= housing.minX + 0.5 && review.minX >= housing.maxX - 0.5,
+                   "Running and Input are left of the camera housing, Review right of it; nothing is drawn under it")
             assert(HoverTabSelector<TaskSection>.tab(at: NSPoint(x: housing.midX, y: housing.midY), in: tabs) == nil)
         }
         assert(HoverTabSelector<TaskSection>.tab(at: NSPoint(x: running.midX, y: running.midY), in: tabs) == .running)
