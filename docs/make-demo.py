@@ -131,12 +131,13 @@ def main():
     frame(700, compact, compact_at, (CX + 8, float_top + 16), dock)
     for top in (34, 24, 14, 6):
         frame(90, compact, (left, top), (CX + 8, top + 16), dock)
-    island_left = CX - NOTCH // 2 - 52            # 52pt left ear
-    frame(1300, island, (island_left, 0), (CX + 8, 18), 'Docked: Running left, Input and Review right', shadow=False)
+    island_left = CX - NOTCH // 2 - 88            # 88pt left ear: Running and Input
+    frame(1300, island, (island_left, 0), (CX + 8, 18), 'Docked: Running and Input left, Review right', shadow=False)
 
     # The ears are the tabs; open, the list hangs centred under the housing.
     ears = 'The ears are the tabs'
-    frame(1500, island_running, (CX - 220, 0), (CX - NOTCH // 2 - 52 + 26, 16), ears, shadow=False)
+    # Open, each ear is (440 - NOTCH) / 2 wide; Running is the first half of the left one.
+    frame(1500, island_running, (CX - 220, 0), (CX - 220 + 33, 16), ears, shadow=False)
     frame(1500, island_review, (CX - 220, 0), (CX + NOTCH // 2 + 82, 16), ears, shadow=False)
 
     # One shared palette keeps colours steady between frames and the file small.

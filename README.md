@@ -6,7 +6,7 @@ A macOS menu-bar app that tracks your **Codex**, **Claude Code**, and **Herdr** 
 
 <img src="docs/assets/demo.gif" alt="Hovering opens the panel and switches between Running, Input, and Review; dragging it into the menu bar docks it beside the notch" width="600">
 
-Monita shows a small floating bar with three counts: Running, Input, and Review. Hover to expand it into a task list. On a Mac with a notch, push it up into the menu bar to dock it as an island — Running on the left, Input and Review on the right.
+Monita shows a small floating bar with three counts: Running, Input, and Review. Hover to expand it into a task list. On a Mac with a notch, push it up into the menu bar to dock it as an island — Running and Input on the left, Review on the right.
 
 Tasks are colour-coded by source: Codex in blue, Claude in orange, Herdr in green. Each has an Open button that takes you to the task in its native app, and a review queue that tracks which results you've seen.
 
