@@ -1,17 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-<title>Monita — Pale Yellow</title>
-<desc>Hand-written flat macOS icon based on the selected B direction. A solid pale butter-yellow background supports the unchanged slim black capsule and blue, amber, and lilac task-state symbols. No gradients, shadows, lighting effects, texture, bevels, or raster images.</desc>
-<rect id="tile" x="48" y="48" width="928" height="928" rx="208" fill="#F8EDC4"/>
-<rect id="island" x="150" y="400" width="724" height="224" rx="112" fill="#0B0D14"/>
-<g id="states" transform="translate(0 18)">
-  <path id="running" d="M300 450 Q292 445 292 455 V533 Q292 543 300 538 L359 502 Q368 496 359 490 Z" fill="#7AADFF"/>
-  <g id="input" fill="#FFC261">
-    <rect x="482" y="447" width="22" height="94" rx="8"/>
-    <rect x="522" y="447" width="22" height="94" rx="8"/>
-  </g>
-  <g id="review">
-    <path d="M659 476 L677 450 Q680 445 688 445 H719 Q727 445 730 450 L748 476 V524 Q748 537 735 537 H672 Q659 537 659 524 Z" fill="#C2B0FF"/>
-    <path d="M669 484 H688 L695 494 H712 L719 484 H738" fill="none" stroke="#0B0D14" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
+<title>Monita: Hood</title>
+<desc>Hand-written flat macOS icon on the standard 824px tile of a 1024px canvas. A pale butter-yellow tile is the screen; the black island hangs from its top edge like the notch dock and peeks down. Its two eyes, Codex blue and Claude orange, sit at the centre of the tile. No gradients, shadows, lighting effects, texture, bevels, or raster images.</desc>
+<defs>
+  <clipPath id="tile-clip">
+    <path d="M383.4 100.0H640.6C722.2 100.0 763.0 100.0 806.9 113.9C854.9 131.3 892.7 169.1 910.1 217.1C924.0 261.0 924.0 301.8 924.0 383.4V640.6C924.0 722.2 924.0 763.0 910.1 806.9C892.7 854.9 854.9 892.7 806.9 910.1C763.0 924.0 722.2 924.0 640.6 924.0H383.4C301.8 924.0 261.0 924.0 217.1 910.1C169.1 892.7 131.3 854.9 113.9 806.9C100.0 763.0 100.0 722.2 100.0 640.6V383.4C100.0 301.8 100.0 261.0 113.9 217.1C131.3 169.1 169.1 131.3 217.1 113.9C261.0 100.0 301.8 100.0 383.4 100.0Z"/>
+  </clipPath>
+</defs>
+<path id="tile" d="M383.4 100.0H640.6C722.2 100.0 763.0 100.0 806.9 113.9C854.9 131.3 892.7 169.1 910.1 217.1C924.0 261.0 924.0 301.8 924.0 383.4V640.6C924.0 722.2 924.0 763.0 910.1 806.9C892.7 854.9 854.9 892.7 806.9 910.1C763.0 924.0 722.2 924.0 640.6 924.0H383.4C301.8 924.0 261.0 924.0 217.1 910.1C169.1 892.7 131.3 854.9 113.9 806.9C100.0 763.0 100.0 722.2 100.0 640.6V383.4C100.0 301.8 100.0 261.0 113.9 217.1C131.3 169.1 169.1 131.3 217.1 113.9C261.0 100.0 301.8 100.0 383.4 100.0Z" fill="#F8EDC4"/>
+<g clip-path="url(#tile-clip)">
+  <path id="island" d="M160 90 H864 V100 C826 100 802 124 802 162 V438 A230 230 0 0 1 572 668 H452 A230 230 0 0 1 222 438 V162 C222 124 198 100 160 100 Z" fill="#0B0D14"/>
+</g>
+<g id="eyes">
+  <circle id="codex" cx="394" cy="452" r="90" fill="#6EABFF"/>
+  <circle id="claude" cx="630" cy="452" r="90" fill="#F0915C"/>
+  <circle cx="402" cy="478" r="38" fill="#0B0D14"/>
+  <circle cx="638" cy="478" r="38" fill="#0B0D14"/>
 </g>
 </svg>

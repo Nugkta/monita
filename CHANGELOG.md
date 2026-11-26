@@ -8,6 +8,10 @@
   result stays in Review until it is viewed in Herdr, its Reviewed button is
   unavailable, and Open brings Herdr to the front (Herdr has no link to a
   single terminal). A Claude session in a local Herdr terminal is listed once.
+- New app icon: the black island hangs from the top of the pale-yellow tile
+  like the notch dock and peeks down with two eyes, one blue and one orange.
+  The tile now uses the standard macOS icon size, so it matches its Dock
+  neighbours.
 
 ## 0.2.16
 
