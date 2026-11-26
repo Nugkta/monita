@@ -6,6 +6,7 @@ import { findStateDatabase, validThreadId } from './catalog';
 import { readCodexWriters } from './history-writer';
 
 type Observation = Pick<Session, 'status' | 'detail' | 'observedAt' | 'evidence' | 'attentionKey' | 'activityAt'>;
+type HistoryObservation = { snapshot: Observation; completedAt?: number };
 interface Turn {
   turn_id: string;
   status: string;
@@ -34,8 +35,8 @@ export async function readCodexHistory(
   ids: string[],
   readWriters = readCodexWriters,
   now = Date.now(),
-): Promise<Map<string, Observation>> {
-  const observations = new Map<string, Observation>();
+): Promise<Map<string, HistoryObservation>> {
+  const observations = new Map<string, HistoryObservation>();
   if (!ids.length) return observations;
   const openTurns: OpenTurn[] = [];
   let history: DatabaseSync | undefined;
@@ -79,13 +80,16 @@ export async function readCodexHistory(
       }
       const unread = receipt.first_unread_turn !== null;
       observations.set(id, {
-        status: unread ? 'review' : 'read',
-        detail: !unread ? 'Read in Codex' : turn.status === 'interrupted' ? 'Turn interrupted in Codex'
-          : turn.status === 'failed' ? 'Turn failed in Codex' : 'New response in Codex',
-        evidence: 'live',
-        attentionKey: `result:${turn.turn_id}`,
-        activityAt,
-        observedAt: now,
+        completedAt: turn.completed_at * 1000,
+        snapshot: {
+          status: unread ? 'review' : 'read',
+          detail: !unread ? 'Read in Codex' : turn.status === 'interrupted' ? 'Turn interrupted in Codex'
+            : turn.status === 'failed' ? 'Turn failed in Codex' : 'New response in Codex',
+          evidence: 'live',
+          attentionKey: `result:${turn.turn_id}`,
+          activityAt,
+          observedAt: now,
+        },
       });
     }
   } catch {
@@ -103,12 +107,14 @@ export async function readCodexHistory(
     // An open handle alone cannot make a turn from a previous process current.
     if (writerStartedAt === undefined || writerStartedAt > startedAt) continue;
     observations.set(id, {
-      status: 'running',
-      detail: 'Codex has an active local turn',
-      evidence: 'live',
-      attentionKey: null,
-      activityAt: startedAt * 1000,
-      observedAt: now,
+      snapshot: {
+        status: 'running',
+        detail: 'Codex has an active local turn',
+        evidence: 'live',
+        attentionKey: null,
+        activityAt: startedAt * 1000,
+        observedAt: now,
+      },
     });
   }
   return observations;

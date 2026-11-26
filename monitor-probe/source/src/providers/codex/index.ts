@@ -98,7 +98,7 @@ export class CodexProvider implements SessionProvider {
   private publish() {
     this.callbacks?.sessions([...this.sessions.values()]);
   }
-  private withHooks(session: Session, projection?: Projection) {
+  private withHooks(session: Session, projection?: Projection, historyCompletedAt?: number) {
     if (this.hostCollisions.has(session.externalId)) return {
       ...session, status: 'unknown' as const, evidence: 'unavailable' as const,
       attentionKey: null, awaitingInput: false, openable: false,
@@ -150,8 +150,11 @@ export class CodexProvider implements SessionProvider {
       event?.turnId &&
       event.turnId !== (turn?.turnId || turn?.id) &&
       event.at > turnStartedAt;
-    // A desktop receipt for an older turn cannot acknowledge newer CLI/plugin work.
-    return session.status === 'unknown' || oldIdleTurn
+    // History timestamps have second precision. Only supersede a receipt when
+    // a different hook turn was observed in a later second.
+    const oldHistoryTurn = historyCompletedAt !== undefined && event?.turnId &&
+      session.attentionKey !== `result:${event.turnId}` && event.at >= historyCompletedAt + 1000;
+    return session.status === 'unknown' || oldIdleTurn || oldHistoryTurn
       ? sessionFromHooks(
           { ...session, status: 'unknown', evidence: 'unavailable', attentionKey: null },
           record,
@@ -218,7 +221,9 @@ export class CodexProvider implements SessionProvider {
         if (observed) this.historyObserved.add(row.externalId);
         this.sessions.set(
           row.externalId,
-          this.withHooks(live ? sessionFromProjection(row, live.state) : { ...row, ...observed }, live?.state),
+          live
+            ? this.withHooks(sessionFromProjection(row, live.state), live.state)
+            : this.withHooks({ ...row, ...observed?.snapshot }, undefined, observed?.completedAt),
         );
       }
       for (const id of previousHistory) this.sessions.delete(id);
