@@ -25,7 +25,7 @@ Tasks are colour-coded by source: Codex in blue, Claude in orange, Herdr in gree
 
 | Source | What Monita sees | Notes |
 | --- | --- | --- |
-| Codex desktop | Task catalog, live states, input requests, completed results | Uses a private observer protocol. |
+| Codex desktop | Task catalog, live states, input requests, completed results | When the desktop observer is unavailable, local turn metadata and a verified writer recover running and published results. Input requests and remote tasks still need the observer. |
 | Claude Code | Local runtime registry; persisted turn and error identities | Remote/SSH tasks may have completion records without live state. |
 | Herdr (herdr-core) | Live terminal status across local and remote machines | Read-only. Needs `herdr-core` at `~/.local/bin/herdr-core` (or `MONITA_HERDR_CORE`). A Claude session in a Herdr terminal is listed once, as Herdr. |
 | Claude Remote Control | Running/input/idle observations from the list cache | Not a live feed; endings are inferred from newer idle observations. |

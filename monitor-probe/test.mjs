@@ -6,6 +6,8 @@ const entries = [
   'monitor-probe/source/tests/projection.test.ts',
   'monitor-probe/tests/projection-v13.test.ts',
   'monitor-probe/tests/provider-v13.test.ts',
+  'monitor-probe/tests/history-writer.test.ts',
+  'monitor-probe/tests/history.test.ts',
 ];
 await build({entryPoints:entries,outdir:'monitor-probe/.test-build',outbase:'monitor-probe',
   outExtension:{'.js':'.mjs'},bundle:true,platform:'node',format:'esm',target:'node22',

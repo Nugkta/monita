@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore Running and published results for local Codex tasks when the desktop
+  observer is offline.
 - Herdr as a third source (green). Monita follows coding-agent terminals on this
   Mac and on every machine connected to the local herdr-core: Running, Input,
   Review and Error follow herdr-core's own status. Monita only reads: a Herdr
