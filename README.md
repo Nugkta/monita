@@ -2,93 +2,66 @@
 
 <img src="task-island/assets/AppIcon.png" width="96" height="96" alt="Monita app icon">
 
-A compact, native macOS status bar for **Codex** and **Claude Code** tasks, and for coding agents running in **Herdr**. Keep an eye on work while using other apps, then review finished results in one small queue.
+A macOS menu-bar app that tracks your **Codex**, **Claude Code**, and **Herdr** coding tasks in one place. See what's running, what needs input, and what's ready to review — without leaving the app you're working in.
 
-> [!IMPORTANT]
-> **Coding-agent tasks only, not chat.** Monita follows coding tasks in the Codex desktop app, in Claude Code, and in terminals managed by Herdr. It does not follow Claude chat conversations (claude.ai or the Claude app's Chat tab), Cowork, or ChatGPT chats, and there are no plans to add them.
+<img src="docs/assets/demo.gif" alt="Hovering opens the panel and switches between Running, Input, and Review; dragging it into the menu bar docks it beside the notch" width="600">
 
-<img src="docs/assets/demo.gif" alt="Animated demo with built-in sample tasks: hovering opens the panel and switches between Running, Input, and Review; dragging it into the menu bar docks it beside the notch, where the ears are the tabs" width="600">
+Monita shows a small floating bar with three counts: Running, Input, and Review. Hover to expand it into a task list. On a Mac with a notch, push it up into the menu bar to dock it as an island — Running on the left, Input and Review on the right.
 
-<sub>Demo built from the app's synthetic previews (sample tasks, no real data) by <code>docs/make-demo.py</code>.</sub>
-
-Monita is an independent, experimental project. It uses local app data, private desktop protocols, and herdr-core's command-line output, so coverage can change when Codex, Claude, or Herdr updates.
+Tasks are colour-coded by source: Codex in blue, Claude in orange, Herdr in green. Each has an Open button that takes you to the task in its native app, and a review queue that tracks which results you've seen.
 
 <details>
-<summary><b>Features</b></summary>
+<summary><b>More features</b></summary>
 
-- A 216 × 34 floating bar with Running, Input, and Review counts.
-- Hover to expand; move away to collapse. Resting on Running, Input, or Review for a moment switches to it; a click still works.
-- Drag the floating panel anywhere; it keeps its top centre as it opens and closes, and centres itself when dropped near the middle of the screen.
-- On a Mac with a camera housing (notch), push the panel up into the menu bar over the housing to dock it as an island: Running to the left of the housing, Input and Review to the right, no taller than the menu bar. Drag it off to undock.
-- One compact task list: Codex in blue, Claude in orange, Herdr in green, with Open and Reviewed actions.
-- A durable, task-grouped review queue. Opening a task does not mark it reviewed. Confirming a row acknowledges only the results captured by that action; later results remain pending.
-- Herdr tasks are read-only. Open brings Herdr to the front, and a result leaves Review when it is viewed in Herdr; its Reviewed button is unavailable.
-- Quiet, distinct completion and input sounds, with a persistent Sound Effects switch.
-- Spring expansion motion that preserves its top edge and respects Reduce Motion.
-- Last-observed activity is distinguished from confirmed live activity. A hollow running marker means an observation is awaiting sync, not that the app has verified the task is currently running.
+- Drag the panel anywhere; it stays centred when it opens and closes.
+- Completion and input sounds (togglable).
+- Spring animation that respects Reduce Motion.
+- Herdr tasks are read-only: results clear when you view them in Herdr.
 
 </details>
 
 <details>
-<summary><b>Coverage</b></summary>
+<summary><b>Sources and coverage</b></summary>
 
-| Source | Available information | Limits |
+| Source | What Monita sees | Notes |
 | --- | --- | --- |
-| Codex desktop | Local task catalog, live states for loaded desktop sessions, input requests, and stable completed-result identities | Does not enumerate every host's live tasks. Uses a private observer protocol. |
-| Claude Code desktop records | Local runtime registry when present; persisted successful-turn and error identities independent of runtime | Remote/SSH tasks may have completion records without locally observable running/input state. Real-session coverage depends on the desktop version. |
-| Herdr (herdr-core) | Live status of coding-agent terminals on this Mac and on every machine connected to the local herdr-core; Herdr desktop's own "seen" marker decides what needs review | Read-only: a Herdr task leaves Review only when viewed in Herdr, and Open brings Herdr forward without selecting the terminal. Needs `~/.local/bin/herdr-core` (or `MONITA_HERDR_CORE`). A Claude session in a local Herdr terminal is listed once, as Herdr. |
-| Claude Remote Control list cache | Timestamped running/input/idle observations; inferred endings when an explicitly active observation is followed by a newer idle observation | Not a continuous live feed. Inferred endings are labeled separately and do not claim a successful upstream turn. |
+| Codex desktop | Task catalog, live states, input requests, completed results | Uses a private observer protocol. |
+| Claude Code | Local runtime registry; persisted turn and error identities | Remote/SSH tasks may have completion records without live state. |
+| Herdr (herdr-core) | Live terminal status across local and remote machines | Read-only. Needs `herdr-core` at `~/.local/bin/herdr-core` (or `MONITA_HERDR_CORE`). A Claude session in a Herdr terminal is listed once, as Herdr. |
+| Claude Remote Control | Running/input/idle observations from the list cache | Not a live feed; endings are inferred from newer idle observations. |
 
-Claude chat, Cowork, and ChatGPT chat are not supported; only Codex, Claude Code, and Herdr coding tasks are. Herdr is optional: when herdr-core is missing or not running, the Herdr source is offline and Codex and Claude are unaffected. The app does not install hooks or configure remote hosts. A task existing only in a stale remote list cannot be made live by refreshing Monita's own heartbeat.
+Herdr is optional — if herdr-core isn't installed or running, the other sources work normally.
 
 </details>
 
 <details>
 <summary><b>Requirements</b></summary>
 
-- macOS 13 or later.
-- Apple Command Line Tools (`xcode-select --install`).
-- Node.js 22.19 or later in the Node 22 line (tested baseline).
-- Python 3 for the optional installer.
-- Optional, for the Herdr source: Herdr with `herdr-core` at `~/.local/bin/herdr-core`, or its path in `MONITA_HERDR_CORE`.
+- macOS 13+
+- Apple Command Line Tools (`xcode-select --install`)
+- Node.js 22.19+ (bundled into the app at build time)
+- Python 3 (for the installer)
+- Herdr (optional): `herdr-core` at `~/.local/bin/herdr-core` or set `MONITA_HERDR_CORE`
 
-The build targets the host Mac's architecture. The resulting app bundles Node so end users do not need a separate runtime. Builds use a local ad hoc signature and are not notarized.
-
-Node's license is located from the selected installation. For a layout the build
-does not recognize, set `NODE_LICENSE_PATH` to that version's complete LICENSE
-file. A checked-in license fallback is provided only for Node v22.19.0.
+The build targets the host architecture. The resulting app is ad-hoc signed, not notarized.
 
 </details>
 
 <details>
 <summary><b>Build and install</b></summary>
 
-From the repository root:
-
 ```sh
 npm ci --prefix monitor-probe/runtime --ignore-scripts --no-audit --no-fund
 sh task-island/release.sh
 ```
 
-This runs the checks, builds `task-island/Monita.app`, and executes its self-check. It does not install or start monitoring.
-
-The editable icon source and 1024px master are in `task-island/assets/`. The
-build uses macOS `sips` and `iconutil` to create all standard icon sizes from
-`AppIcon.png`; after editing `AppIcon.svg`, export the updated 1024px PNG there
-before building.
-
-To install or update after those checks:
+This builds `task-island/Monita.app` and runs checks. To install to `~/Applications`:
 
 ```sh
 sh task-island/release.sh --install
 ```
 
-The installed location is `~/Applications/Monita.app`. Monita was called Task Island before 0.2.14; the installer replaces an installed `Task Island.app` (keeping it in `task-island/backups/`), and review history and settings carry over. The app has a floating panel and menu-bar item instead of a conventional main window. It does not add a login item.
-
-After a successful build, `python3 task-island/update-installed.py --no-launch`
-installs without starting monitoring. Existing app bundles are kept in the
-ignored `task-island/backups/` directory. Review data is stored separately and
-is not changed by the installer.
+The icon source is `task-island/assets/AppIcon.svg`. After editing it, export a 1024px PNG to `AppIcon.png` — the build generates all icon sizes from it.
 
 </details>
 
@@ -108,43 +81,26 @@ sh task-island/test-panel-motion-cases.sh
 sh task-island/test-herdr-cases.sh
 ```
 
-The tests use synthetic records and temporary resources. Some IPC tests need permission to create local Unix sockets. A model or layout test passing does not establish that a particular real Claude remote session has a working live feed.
+Codex protocol regressions: `node monitor-probe/test.mjs`
 
-For the additional adapted Codex protocol regression suite, run
-`node monitor-probe/test.mjs`.
+Installer tests (doesn't touch the real install): `python3 -m unittest discover -s tests`
 
-After building, `python3 -m unittest discover -s tests` checks a fresh install,
-an update, and unrelated-app protection in temporary directories without
-launching the app or touching the normal installation.
+Render previews without starting observers: `"task-island/Monita.app/Contents/MacOS/Monita" --render-preview /tmp/preview.png --floating`
 
-Synthetic offscreen previews do not start source observers or play sounds:
-
-```sh
-"task-island/Monita.app/Contents/MacOS/Monita" --render-preview /tmp/task-island-review.png --floating
-```
-
-`python3 docs/make-demo.py` rebuilds `docs/assets/demo.gif` from these previews (requires Pillow).
+Rebuild the demo GIF (needs Pillow): `python3 docs/make-demo.py`
 
 </details>
 
 <details>
-<summary><b>Privacy and local state</b></summary>
+<summary><b>Privacy</b></summary>
 
-Monita does not call a model, generate summaries, send prompts, answer approvals, resume tasks, or upload task content. Its source observers communicate with the native UI through a private pipe containing allowlisted task/navigation metadata.
+Monita never calls a model, sends prompts, answers approvals, or uploads task content. It reads local task metadata only.
 
-The underlying Codex IPC can send a full snapshot into memory before projection. The Claude cache reader temporarily copies and decodes the selected local cache before filtering it; this can include unrelated cached content in memory. Only allowlisted session metadata leaves the parser. Temporary copies are private and removed after reading. Unsupported formats fail closed.
+- **Codex:** communicates through a private pipe; only allowlisted navigation metadata leaves the observer.
+- **Claude:** copies and decodes the local cache temporarily, then filters to session metadata. Temporary copies are removed after reading.
+- **Herdr:** runs only `herdr-core events --json` and `ls --json`, and only while the core is already running.
 
-The Herdr observer only reads. It runs `herdr-core events --json` and `herdr-core ls --json` and nothing else, and only while herdr-core's socket already accepts a connection, so it never starts a core that is stopped.
-
-Own review state is saved with private permissions and atomic replacement under:
-
-```text
-~/Library/Application Support/TaskIsland/review-ledger.json
-```
-
-The folder keeps the project's original name so history from before the rename carries over.
-
-It contains task titles, result identities, and explicit review receipts, not answer bodies. The aggregate `runtime-status.json` in the same directory is for diagnostics. Do not include these files, source-app caches, screenshots of real tasks, credentials, or diagnostic dumps in public issues.
+Review state is stored at `~/Library/Application Support/TaskIsland/review-ledger.json` (task titles and review receipts, not answer content). Don't include this file, source-app caches, or screenshots of real tasks in issues.
 
 </details>
 
@@ -153,16 +109,14 @@ It contains task titles, result identities, and explicit review receipts, not an
 
 ```text
 task-island/       SwiftUI/AppKit app, status bridge, tests, and build scripts
-monitor-probe/     Adapted local source observers and pinned JavaScript dependencies
+monitor-probe/     Local source observers and pinned JavaScript dependencies
 ```
 
 </details>
 
 <details>
-<summary><b>License and acknowledgments</b></summary>
+<summary><b>License</b></summary>
 
-MIT. The local observer adapters derive from [Monitor](https://github.com/JustinTervala/monitor), copyright 2026 Justin Tervala, pinned originally at `69b148a3b31350a6bb3546d3dabddf659d891e3b`. Its copyright and MIT permission notice are preserved in `monitor-probe/source/LICENSE`.
-
-The app bundles Node.js and Immer with their applicable license notices. See `THIRD_PARTY_NOTICES.md` for the shipped components. This project is not affiliated with OpenAI, Anthropic, or Herdr.
+MIT. The local observer adapters derive from [Monitor](https://github.com/JustinTervala/monitor) by Justin Tervala (MIT). The app bundles Node.js and Immer — see `THIRD_PARTY_NOTICES.md`. Not affiliated with OpenAI, Anthropic, or Herdr.
 
 </details>
